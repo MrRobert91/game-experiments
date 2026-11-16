@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#05060d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Por el bien de la trama</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%2305060d'/><circle cx='32' cy='32' r='15' fill='none' stroke='%23f2c14e' stroke-width='5'/><circle cx='32' cy='32' r='5' fill='%23f2c14e'/></svg>" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div id="ui">
+    <div class="bar" id="bar-top"></div>
+    <div class="bar" id="bar-bottom"></div>
+
+    <div id="hud" class="hidden">
+      <div id="objective"><span class="tag">OBJETIVO</span><span id="objective-text"></span></div>
+      <div id="awareness">
+        <span class="tag">CONSCIENCIA NARRATIVA</span>
+        <div class="meter"><i id="awareness-fill"></i></div>
+        <b id="awareness-num">0%</b>
+      </div>
+    </div>
+
+    <div id="chapter" class="hidden"><small></small><h2></h2></div>
+    <div id="subtitle" class="hidden"><b></b><span></span></div>
+
+    <div id="dialog" class="hidden">
+      <div class="who"></div>
+      <p class="text"></p>
+      <div class="next">▾</div>
+    </div>
+
+    <div id="choices" class="hidden">
+      <div class="prompt"></div>
+      <div class="cards">
+        <button class="card" data-i="0"><kbd>1</kbd><span></span></button>
+        <button class="card" data-i="1"><kbd>2</kbd><span></span></button>
+      </div>
+    </div>
+
+    <div id="note" class="hidden"><article><div class="body"></div><button class="btn">Seguir</button></article></div>
+
+    <div id="fake" class="hidden"></div>
+    <div id="reveal" class="hidden"></div>
+
+    <div id="touch" class="hidden">
+      <div id="stick"><i></i></div>
+      <button id="btn-action" aria-label="Embestir"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></button>
+    </div>
+
+    <button id="btn-mute" class="hidden" aria-label="Sonido">♪</button>
+    <div id="fade"></div>
+
+    <div id="title">
+      <div class="inner">
+        <small>UN JUEGO QUE SABE QUE LO ES</small>
+        <h1>Por el bien<br/>de la <em>trama</em></h1>
+        <p class="tagline">Tú decides. Más o menos.</p>
+        <button id="btn-start" class="btn big" disabled>Cargando…</button>
+        <p class="keys"><span class="desk">WASD / flechas para moverte · Espacio para embestir</span><span class="mob">Arrastra a la izquierda para moverte · botón derecho para embestir</span></p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
