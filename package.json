@@ -1,0 +1,19 @@
+{
+  "name": "por-el-bien-de-la-trama",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Juego narrativo autoconsciente en three.js con físicas ragdoll",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.8"
+  }
+}

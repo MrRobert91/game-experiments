@@ -1,0 +1,7 @@
+services:
+  juego:
+    build: .
+    image: por-el-bien-de-la-trama
+    ports:
+      - "8080:80"
+    restart: unless-stopped
