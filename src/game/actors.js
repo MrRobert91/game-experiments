@@ -152,7 +152,7 @@ export class Boss {
     for (const [x, z] of [[-0.8, 0.6], [0.8, 0.6], [-0.8, -0.6], [0.8, -0.6]]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 20), MAT.rubber); w.rotation.z = Math.PI / 2; w.position.set(x * 1.15, -0.72, z); g.add(w); }
     const label = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.24), new THREE.MeshStandardMaterial({ map: canvasTex(256, 128, (c) => { c.fillStyle = '#fff'; c.fillRect(0, 0, 256, 128); c.fillStyle = '#c00'; c.font = '800 34px system-ui'; c.textAlign = 'center'; c.fillText('NÉMESIS', 128, 50); c.fillStyle = '#222'; c.font = '600 22px system-ui'; c.fillText('creada hace 1 min', 128, 92); }), side: THREE.DoubleSide }));
     label.position.set(1.1, 0.75, 0.3); label.rotation.set(0, Math.PI / 2, 0.3); g.add(label);
-    this.light = new THREE.PointLight(0xff2030, 30, 14, 2); this.light.position.set(0, 0.4, 1.6); g.add(this.light);
+    this.light = game.gfx.point(99, { color: 0xff2030, intensity: 30, distance: 14, parent: g, pos: [0, 0.4, 1.6] }); // last pool light
     game.gfx.scene.add(shadowed(g));
     this.ent = game.physics.add({ mesh: g, pos: [pos.x, pos.y + 0.95, pos.z], rotY: Math.PI, shapes: [{ kind: 'cyl', size: [1.05, 0.92] }], density: 3, friction: 0.3, group: GROUPS.boss, angDamp: 1, linDamp: 0.2, ccd: true, canSleep: false, tag: 'boss' });
 

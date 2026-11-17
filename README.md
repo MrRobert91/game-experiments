@@ -65,6 +65,8 @@ Funciona en vertical y en horizontal. En móvil el juego baja solo la resolució
 - **Rapier** (WASM) para las físicas. M0P-1 es un ragdoll activo: un cuerpo que se mantiene de pie corrigiendo su velocidad angular, con cabeza y brazos colgando de articulaciones esféricas. Cuando algo le da un golpe se queda sin control, rueda como un muñeco y luego se levanta. El jefe arrastra una manguera hecha de la misma forma.
 - Todo es procedural. No hay modelos, texturas ni audio descargados: la geometría se genera en código, las texturas se pintan en canvas y la música y los efectos se sintetizan con Web Audio.
 - La partida anterior se guarda en `localStorage` (solo cuántas veces has jugado y qué elegiste) para que el Narrador pueda echártelo en cara.
+- Rendimiento: las luces locales salen de un grupo fijo que las escenas se van prestando (cambiar el número de luces recompila todos los shaders), y al cargar se dibuja un fotograma con todo visible para compilar shaders y subir texturas detrás de la pantalla de carga. En móvil el bloom va a un cuarto de resolución y la resolución general se ajusta sola.
+- Ningún tramo puede dejarte atascado: si tardas demasiado en un tutorial, una puerta o un minijuego, el Narrador se impacienta y te lleva él.
 - Sin framework. Vite empaqueta y nginx sirve el resultado.
 
 ```
@@ -78,4 +80,6 @@ src/
 ## Parámetros de URL
 
 - `?q=low` o `?q=high` fuerza la calidad gráfica.
-- `?auto=A` o `?auto=B` juega solo, eligiendo siempre la primera o la segunda opción. Sirve para probar que la historia llega al final.
+- `?auto=A` o `?auto=B` juega solo, eligiendo siempre la primera o la última opción, con todas las esperas comprimidas. Sirve de prueba rápida de que la historia llega al final.
+- `?auto=A&real=1` hace lo mismo a ritmo humano: escribe los diálogos, carga la turbofregona de verdad y juega los minijuegos enteros. Es la prueba que detecta bloqueos.
+- `?mini=platformer` o `?mini=shmup` abre directamente un minijuego 2D.

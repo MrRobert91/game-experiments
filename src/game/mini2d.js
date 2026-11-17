@@ -28,6 +28,9 @@ export class Mini2D {
     const a = innerWidth / innerHeight, base = 200;
     this.W = Math.round(a >= 1 ? Math.min(440, base * a) : base); this.H = Math.round(a >= 1 ? base : Math.min(440, base / a));
     this.cv.width = this.W; this.cv.height = this.H; this.g.imageSmoothingEnabled = false;
+    // on a portrait phone the stick and button sit over the bottom of the picture: keep the action above them
+    this.pad = this.game.input.isTouch && a < 1 ? Math.round(180 / (innerHeight / this.H)) : 0;
+    this.top = Math.round(70 / (innerHeight / this.H)); // canvas rows hidden behind the HUD
   }
   open() { this.active = true; this._size(); this.cv.classList.remove('hidden'); document.body.classList.add('mode2d'); this.game.paused3d = true; this.shake = 0; this.texts = []; }
   close() { this.active = false; this.cv.classList.add('hidden'); document.body.classList.remove('mode2d'); this.game.paused3d = false; }
@@ -89,8 +92,9 @@ export class Mini2D {
         mx = 1; const ahead = P.x + P.w + 10, feet = P.y + P.h + 4;
         const danger = !isSolid(ahead, feet) || isSolid(ahead, P.y + 6) || enemies.some((e) => e.alive && e.x > P.x && e.x - P.x < 34) || spikes.some(([sx]) => sx * T > P.x && sx * T - P.x < 26);
         if (P.ground && (danger || stuck > 0.5)) { P.buf = 0.1; stuck = 0; }
-        if (t > 40) { P.x = flagX - 30; P.y = 100; }
+        if (ui.fast && t > 40) { P.x = flagX - 30; P.y = 100; }
       }
+      if (t > 150 && !done && P.x < flagX - 40) { ui.bark('narrador', 'Vale, ya te llevo yo a la bandera.'); pick = Math.max(0, pick); camX = flagX - 80; P.x = flagX - 30; P.y = 60; P.vx = P.vy = 0; }
       stuck = Math.abs(P.vx) < 5 ? stuck + dt : 0;
       if (jump) P.buf = 0.12;
       P.buf -= dt; P.coy -= dt; P.inv -= dt; P.sq *= Math.exp(-dt * 10);
@@ -139,7 +143,7 @@ export class Mini2D {
       fade = Math.max(0, fade - dt * 2);
 
       // ---- draw ----
-      const g = this.g, W = this.W, H = this.H, oy = H - ROWS * T, sh = this.shake * 3;
+      const g = this.g, W = this.W, H = this.H, oy = H - ROWS * T - this.pad, sh = this.shake * 3;
       g.setTransform(1, 0, 0, 1, 0, 0);
       const sky = g.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#1a1040'); sky.addColorStop(0.6, '#5a3a8a'); sky.addColorStop(1, '#ff9a6a');
       g.fillStyle = sky; g.fillRect(0, 0, W, H);
@@ -167,9 +171,10 @@ export class Mini2D {
       }
       this.drawTexts(dt);
       g.setTransform(1, 0, 0, 1, 0, 0);
+      if (this.pad) { g.fillStyle = '#3a2010'; g.fillRect(0, H - this.pad, W, this.pad); g.fillStyle = '#2a1608'; for (let i = 0; i < W; i += 16) g.fillRect(i + ((i / 16) % 2) * 6, H - this.pad + 6 + (i % 3) * 9, 5, 2); }
       if (done) { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, H / 2 - 26, W, 52); this.label('GRACIAS, M0P-1.', W / 2, H / 2 - 6, '#fff', 10); this.label('PERO TU TRAMA ESTÁ EN OTRO GÉNERO.', W / 2, H / 2 + 10, '#f2c14e', Math.min(9, W / 24)); }
       if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
-      return done && t > (ui.auto ? 0.2 : 3);
+      return done && t > (ui.fast ? 0.2 : 3);
     });
     ui.clearBarks(); ui.objective('');
     this.close();
@@ -181,7 +186,7 @@ export class Mini2D {
     const { game } = this, { ui, input, audio } = game;
     this.open();
     const W = this.W, H = this.H;
-    const P = { x: W / 2, y: H - 36, inv: 0, fire: 0, bomb: 0 };
+    const P = { x: W / 2, y: H - 36 - this.pad, inv: 0, fire: 0, bomb: 0 };
     const shots = [], foes = [], bullets = [], stars = Array.from({ length: 50 }, () => [Math.random() * W, Math.random() * H, 20 + Math.random() * 90]);
     let t = 0, spawn = 0, dignity = 3, boss = null, done = false, endT = 0, kills = 0, flash = 0;
     audio.mood('chip');
@@ -194,8 +199,8 @@ export class Mini2D {
     await this.run((dt) => {
       t += dt; flash = Math.max(0, flash - dt * 3);
       let mx = input.move.x, my = input.move.y; const bomb = input.action();
-      if (ui.auto) { mx = Math.sin(t * 1.7); my = 0; if (t > 9 && !boss) t = 27; if (boss && boss.t > 3) boss.hp = 0; }
-      P.x = Math.max(8, Math.min(W - 8, P.x + mx * 140 * dt)); P.y = Math.max(40, Math.min(H - 14, P.y + my * 120 * dt));
+      if (ui.auto) { mx = Math.sin(t * 1.7); my = 0; if (ui.fast) { if (t > 9 && !boss) t = 27; if (boss && boss.t > 3) boss.hp = 0; } }
+      P.x = Math.max(8, Math.min(W - 8, P.x + mx * 140 * dt)); P.y = Math.max(this.top + 76, Math.min(H - 14 - this.pad, P.y + my * 120 * dt));
       P.inv -= dt; P.fire -= dt; P.bomb -= dt;
       if (P.fire <= 0) { P.fire = 0.14; shots.push({ x: P.x - 3, y: P.y - 8 }, { x: P.x + 3, y: P.y - 8 }); if (Math.floor(t * 7) % 2) audio.shoot(); }
       if (bomb && P.bomb <= 0) { P.bomb = 3.5; flash = 1; audio.explode(); this.shake = 1; this.text(P.x, P.y - 20, '¡ESPUMA!', '#6fe3ff'); bullets.length = 0; for (const f of foes) f.hp -= 6; if (boss) boss.hp -= 6; }
@@ -218,7 +223,8 @@ export class Mini2D {
         if (f.y > H + 30) f.dead = true;
       }
       if (boss) {
-        boss.t += dt; boss.y = Math.min(54, boss.y + 40 * dt); boss.x = W / 2 + Math.sin(boss.t * 0.9) * (W / 2 - 34);
+        boss.t += dt; boss.y = Math.min(this.top + 44, boss.y + 40 * dt);
+        if (boss.t > 45 && boss.hp > 0) { boss.hp = 0; this.text(boss.x, boss.y + 30, '¡SE LE PASÓ EL PLAZO!', '#fff'); } boss.x = W / 2 + Math.sin(boss.t * 0.9) * (W / 2 - 34);
         for (const s of shots) if (!s.dead && Math.abs(s.x - boss.x) < 22 && Math.abs(s.y - boss.y) < 22) { s.dead = true; boss.hp--; boss.hit = 0.08; }
         boss.hit = (boss.hit || 0) - dt;
         if (Math.floor(boss.t / 0.8) !== Math.floor((boss.t - dt) / 0.8)) for (const a of [-0.35, 0, 0.35]) { const d = Math.atan2(P.y - boss.y, P.x - boss.x) + a; bullets.push({ x: boss.x, y: boss.y + 14, vx: Math.cos(d) * 80, vy: Math.sin(d) * 80, col: '#ff4d5e', bad: true }); }
@@ -247,17 +253,17 @@ export class Mini2D {
         g.fillStyle = '#101418'; for (let i = 0; i < 12; i++) g.fillRect(bx + Math.cos(i * 0.5236) * 18 - 1, by + Math.sin(i * 0.5236) * 18 - 1, 2, 2);
         g.strokeStyle = '#101418'; g.lineWidth = 2; g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + Math.cos(boss.t * 5) * 15, by + Math.sin(boss.t * 5) * 15); g.moveTo(bx, by); g.lineTo(bx + Math.cos(boss.t * 0.8) * 10, by + Math.sin(boss.t * 0.8) * 10); g.stroke(); g.lineWidth = 1;
         g.fillStyle = '#e0304a'; g.fillRect(bx - 12, by - 9, 8, 3); g.fillRect(bx + 4, by - 9, 8, 3);
-        g.fillStyle = '#300'; g.fillRect(W / 2 - 60, 12, 120, 5); g.fillStyle = '#e0304a'; g.fillRect(W / 2 - 60, 12, 120 * Math.max(0, boss.hp / boss.max), 5); this.label('EL DEADLINE', W / 2, 10, '#fff', 7);
+        const hb = this.top + 10; g.fillStyle = '#300'; g.fillRect(W / 2 - 60, hb, 120, 5); g.fillStyle = '#e0304a'; g.fillRect(W / 2 - 60, hb, 120 * Math.max(0, boss.hp / boss.max), 5); this.label('EL DEADLINE', W / 2, hb - 2, '#fff', 7);
       }
       g.fillStyle = '#9fefff'; for (const s of shots) { g.beginPath(); g.arc(s.x, s.y, 2, 0, 7); g.fill(); }
       for (const b of bullets) { g.fillStyle = b.col; g.fillRect(Math.round(b.x) - 1, Math.round(b.y) - 1, b.bad ? 4 : 2, b.bad ? 4 : 2); }
       if (P.inv <= 0 || Math.floor(t * 20) % 2) { g.drawImage(SPR.robot, Math.round(P.x - 6), Math.round(P.y - 7)); g.fillStyle = '#6fe3ff'; g.fillRect(P.x - 2, P.y + 7, 4, 2 + Math.floor(t * 30) % 3); }
       this.drawTexts(dt);
       g.setTransform(1, 0, 0, 1, 0, 0);
-      this.label('DIGNIDAD ' + dignity, 6, H - 6, dignity > 0 ? '#fff' : '#ff6a6a', 7, 'left');
-      this.label(P.bomb <= 0 ? 'ESPUMA LISTA' : 'espuma…', W - 6, H - 6, P.bomb <= 0 ? '#6fe3ff' : '#667', 7, 'right');
+      this.label('DIGNIDAD ' + dignity, W / 2, H - 16, dignity > 0 ? '#fff' : '#ff6a6a', 7);
+      this.label(P.bomb <= 0 ? 'ESPUMA LISTA' : 'espuma…', W / 2, H - 6, P.bomb <= 0 ? '#6fe3ff' : '#667', 7);
       if (flash > 0) { g.fillStyle = `rgba(255,255,255,${flash * 0.8})`; g.fillRect(0, 0, W, H); }
-      return done && endT > (ui.auto ? 0.2 : 2.6);
+      return done && endT > (ui.fast ? 0.2 : 2.6);
     });
     ui.clearBarks(); ui.objective('');
     this.close();
@@ -295,8 +301,9 @@ export class Mini2D {
       g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(hx + (state.heroLunge > 0 ? 30 : 0), hz + 30, 16, 4, 0, 0, 7); g.fill();
       g.drawImage(SPR.robot, Math.round(hx - 18 + (state.heroLunge > 0 ? 30 : 0)), Math.round(hy - 42), 36, 42);
       // boxes
-      g.fillStyle = '#1c2a8c'; g.fillRect(6, 8, 104, 26); g.strokeStyle = '#fff'; g.strokeRect(6.5, 8.5, 104, 26);
-      this.label('EL ASPIRADOR', 12, 19, '#fff', 8, 'left'); this.label('PV ' + state.foeHp.toLocaleString('es-ES'), 12, 30, '#ff8a8a', 8, 'left');
+      const by = Math.round(H * 0.2);
+      g.fillStyle = '#1c2a8c'; g.fillRect(6, by, 104, 26); g.strokeStyle = '#fff'; g.strokeRect(6.5, by + 0.5, 104, 26);
+      this.label('EL ASPIRADOR', 12, by + 11, '#fff', 8, 'left'); this.label('PV ' + state.foeHp.toLocaleString('es-ES'), 12, by + 22, '#ff8a8a', 8, 'left');
       g.fillStyle = '#1c2a8c'; g.fillRect(W - 110, hz + 2, 104, 26); g.strokeStyle = '#fff'; g.strokeRect(W - 109.5, hz + 2.5, 104, 26);
       this.label('M0P-1  Nv 1', W - 104, hz + 13, '#fff', 8, 'left'); this.label('PV 7/7  PM 0', W - 104, hz + 24, '#9fefff', 8, 'left');
       this.drawTexts(dt);

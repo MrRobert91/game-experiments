@@ -21,7 +21,7 @@ const pageGeo = new THREE.PlaneGeometry(0.5, 0.68);
 export class Pages {
   constructor(game) {
     this.game = game; this.list = []; this.got = 0; this.total = 0;
-    game.tickers.add((dt) => {
+    game.tickers.add(this.tick = (dt) => {
       const p = game.robot.position;
       for (const pg of this.list) {
         if (pg.done) continue;
@@ -37,6 +37,7 @@ export class Pages {
       }
     });
   }
+  dispose() { for (const pg of this.list) this.game.gfx.scene.remove(pg.mesh); this.list.length = 0; this.game.tickers.delete(this.tick); }
   add(x, y, z, text) {
     const mesh = new THREE.Mesh(pageGeo, pageMat); mesh.position.set(x, y + 0.9, z); this.game.gfx.scene.add(mesh);
     this.list.push({ mesh, x, y, z, text, done: false }); this.total++;
@@ -106,11 +107,12 @@ export function makeBarrels(game, spots, y, onBoom) {
 // ───────── noir stealth: searchlights and cardboard guards ─────────
 export function makeStealth(game, y) {
   const scene = game.gfx.scene, lights = [], guards = [];
+  let S0 = null;
   for (let i = 0; i < 3; i++) {
     const g = new THREE.Group();
     const cone = lightCone(14, 2.9, 0xffffff, 0.14); cone.position.y = 14; g.add(cone);
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(2.7, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08, depthWrite: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.04; g.add(disc);
-    const sp = new THREE.SpotLight(0xffffff, 130, 30, 0.2, 0.3, 1.2); sp.position.y = 14; sp.target.position.set(0, 0, 0); g.add(sp, sp.target);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(2.7, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: i === 0 ? 0.06 : 0.22, depthWrite: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.04; g.add(disc);
+    if (i === 0) S0 = game.gfx.spot(1, { intensity: 130, distance: 30, angle: 0.2, penumbra: 0.3, decay: 1.2, parent: g, pos: [0, 14, 0], target: [0, 0, 0] }); // one real light, the other two are faked
     g.position.y = y; scene.add(g); lights.push({ g, i });
   }
   const tex = canvasTex(128, 256, (c) => {
@@ -133,8 +135,9 @@ export function makeStealth(game, y) {
     if (Math.random() < 0.5) game.gfx.particles.burst(V(rp.x + (Math.random() - 0.5) * 24, y + 10, rp.z + (Math.random() - 0.5) * 20), 3, { color: 0xffffff, speed: 0.2, life: 0.55, size: 0.07, gravity: -45, spread: 6, drag: 0 });
   };
   game.tickers.add(tick);
-  S.off = () => { S.on = false; lights.forEach(({ g }) => (g.visible = false)); };
-  S.dispose = () => { game.tickers.delete(tick); lights.forEach(({ g }) => scene.remove(g)); guards.forEach((e) => game.temp.push({ e, t: 6 })); };
+  const park = () => { if (S0) { game.gfx.spot(1, { intensity: 0 }); S0 = null; } }; // hand the light back before hiding/removing its parent
+  S.off = () => { S.on = false; park(); lights.forEach(({ g }) => (g.visible = false)); };
+  S.dispose = () => { game.tickers.delete(tick); park(); lights.forEach(({ g }) => scene.remove(g)); guards.forEach((e) => game.temp.push({ e, t: 6 })); };
   return S;
 }
 
@@ -191,8 +194,10 @@ export function makeHoppers(game, spots, y) {
 
 // ───────── the Narrator throws adverbs at you ─────────
 const WORDS = ['DE PRONTO', 'SIN EMBARGO', 'CASUALMENTE', 'POR DESGRACIA', 'ENTONCES', 'DE REPENTE', 'INEXPLICABLEMENTE', 'NO OBSTANTE', 'ADJETIVO'];
+const wordMats = {}, wordGeo = new THREE.PlaneGeometry(5.6, 1.1);
 export function makeWords(game, origin) {
-  const scene = game.gfx.scene, live = [], mats = {};
+  const scene = game.gfx.scene, live = [];
+  const pool = WORDS.map((w) => { const m = new THREE.Mesh(wordGeo, (wordMats[w] ||= new THREE.MeshBasicMaterial({ map: textTex(w, { w: 1024, h: 200, color: '#fff2c0', glow: '#ffb030', font: 'italic 800 130px Georgia, serif' }), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }))); m.rotation.x = -0.7; m.visible = false; scene.add(m); return m; });
   let t = 1.5, n = 0;
   const S = { on: true };
   const tick = (dt) => {
@@ -200,8 +205,8 @@ export function makeWords(game, origin) {
     t -= dt;
     if (S.on && t <= 0 && live.length < 5) {
       t = 1.5; const w = WORDS[n++ % WORDS.length];
-      mats[w] ||= new THREE.MeshBasicMaterial({ map: textTex(w, { w: 1024, h: 200, color: '#fff2c0', glow: '#ffb030', font: 'italic 800 130px Georgia, serif' }), transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(5.6, 1.1), mats[w]); mesh.rotation.x = -0.7; mesh.position.set(origin.x, origin.y + 0.7, origin.z); scene.add(mesh);
+      const mesh = pool[(n - 1) % pool.length]; if (mesh.visible) return;
+      mesh.visible = true; mesh.position.set(origin.x, origin.y + 0.7, origin.z);
       const d = V(rp.x - origin.x, 0, rp.z - origin.z).normalize();
       live.push({ mesh, d, life: 5, w }); game.audio.whoosh();
     }
@@ -209,10 +214,10 @@ export function makeWords(game, origin) {
       const o = live[i]; o.life -= dt; o.mesh.position.addScaledVector(o.d, 7.5 * dt); o.mesh.position.y = origin.y + 0.7 + Math.sin(o.life * 6) * 0.12;
       const hit = r.stun <= 0 && Math.abs(rp.y - origin.y) < 1.2 && dist(rp, o.mesh.position.x, o.mesh.position.z) < 1.25;
       if (hit) { r.knock(1, { x: o.d.x * 6, y: 7, z: o.d.z * 6 }); r.falls++; game.gfx.shake(0.4); game.hitstop(0.07); game.pop(rp.clone().setY(rp.y + 1.6), '¡' + o.w + '!', '#ffd24a'); game.audio.thud(1); }
-      if (hit || o.life <= 0) { scene.remove(o.mesh); live.splice(i, 1); }
+      if (hit || o.life <= 0) { o.mesh.visible = false; live.splice(i, 1); }
     }
   };
   game.tickers.add(tick);
-  S.dispose = () => { game.tickers.delete(tick); live.forEach((o) => scene.remove(o.mesh)); };
+  S.dispose = () => { game.tickers.delete(tick); pool.forEach((m) => scene.remove(m)); };
   return S;
 }

@@ -63,7 +63,7 @@ export function buildWorld(game) {
   W.doorBlock = physics.add({ type: 'fixed', pos: [0, 1.5, -7.2], shapes: [{ kind: 'box', size: [2.8, 3, 0.4] }], group: GROUPS.world });
   const exit = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.42), new THREE.MeshBasicMaterial({ map: textTex('SALIDA', { w: 512, h: 144, bg: '#03130a', color: '#5dffa0', glow: '#5dffa0', font: '800 100px system-ui' }), toneMapped: false }));
   exit.position.set(0, 3.45, -6.98); W.closet.add(exit);
-  W.exitLight = new THREE.PointLight(0x5dffa0, 0, 9, 2); W.exitLight.position.set(0, 2.6, -6.2); W.closet.add(W.exitLight);
+  W.exitLight = gfx.point(0, { color: 0x5dffa0, intensity: 0, distance: 9, pos: [0, 2.6, -6.2] });
   // trims, sign, poster
   for (const x of [-7, 7]) { const t = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 14.4), M.wallTrim); t.position.set(x * 0.995, 0.12, 0); W.closet.add(t); }
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.85), new THREE.MeshStandardMaterial({ map: textTex('TRASTERO 7', { bg: '#141821', color: '#f2c14e', border: '#f2c14e' }), roughness: 0.4 }));
@@ -102,11 +102,9 @@ export function buildWorld(game) {
   const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 3.4, 6), MAT.rubber); cord.position.y = -1.7; lamp.add(cord);
   const shade = new THREE.Mesh(new THREE.ConeGeometry(0.75, 0.5, 28, 1, true), new THREE.MeshStandardMaterial({ color: 0x1c2a22, roughness: 0.4, metalness: 0.7, side: THREE.DoubleSide })); shade.position.y = -3.5; lamp.add(shade);
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), M.neon(0xffd9a0, 6)); bulb.position.y = -3.65; lamp.add(bulb);
-  const spot = W.lampLight = new THREE.SpotLight(0xffd2a0, 60, 30, 0.8, 0.7, 1.3); spot.position.y = -3.6; spot.target.position.set(0, -12, 0);
-  if (!gfx.low) { spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); spot.shadow.bias = -0.0005; spot.shadow.camera.near = 1; spot.shadow.camera.far = 16; }
-  lamp.add(spot, spot.target);
+  W.lampLight = gfx.spot(0, { color: 0xffd2a0, intensity: 60, distance: 30, angle: 0.8, penumbra: 0.7, decay: 1.3, parent: lamp, pos: [0, -3.6, 0], target: [0, -12, 0] });
   const cone = lightCone(6, 4.6, 0xffd2a0, 0.1); cone.position.y = -3.5; lamp.add(cone);
-  W.closet.add(lamp);
+  scene.add(lamp); // not under W.closet: hiding a light's parent changes the light count and recompiles every shader
   // stains
   const stainTex = canvasTex(128, 128, (g) => {
     g.fillStyle = '#fff'; for (let i = 0; i < 14; i++) { g.beginPath(); const a = Math.random() * 7, r = Math.random() * 30; g.arc(64 + Math.cos(a) * r, 64 + Math.sin(a) * r, 12 + Math.random() * 20, 0, 7); g.fill(); }
@@ -145,7 +143,7 @@ export function buildWorld(game) {
     g.position.set(x, A, z); scene.add(shadowed(g));
     physics.add({ type: 'fixed', pos: [x, A + 4, z], shapes: [{ kind: 'cyl', size: [1.1, 4] }], group: GROUPS.world });
     W.pillars.push(V(x, A, z));
-    const pl = new THREE.PointLight(i % 2 ? 0x29d3ff : 0xff2a6d, 60, 22, 2); pl.position.set(x * 0.8, A + 3.2, z * 0.8); scene.add(pl);
+    if (!gfx.low || i % 2 === 0) gfx.point(gfx.low ? 1 + i / 2 : 1 + i, { color: i % 2 || (gfx.low && i === 2) ? 0x29d3ff : 0xff2a6d, intensity: gfx.low ? 90 : 60, distance: gfx.low ? 30 : 22, pos: [x * 0.8, A + 3.2, z * 0.8] });
   }
   const bigSign = new THREE.Mesh(new THREE.PlaneGeometry(22, 3.6), new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, map: textTex(['FÁBRICA DE GIROS', 'ARGUMENTALES S.L.'], { w: 2048, h: 340, color: '#ff5a8a', glow: '#ff2a6d', font: '800 130px system-ui' }) }));
   bigSign.position.set(0, A + 11, -19.5); scene.add(bigSign);
@@ -183,7 +181,7 @@ export function buildWorld(game) {
   const cornea = new THREE.Mesh(new THREE.SphereGeometry(1.45, 32, 16, 0, Math.PI * 2, 0, 0.9), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, roughness: 0, clearcoat: 1 })); cornea.rotation.x = Math.PI / 2; cornea.position.z = 1.45; eye.add(cornea);
   W.eyeRings = [];
   for (let i = 0; i < 3; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(3.3 + i * 0.7, 0.07 + i * 0.02, 10, 96), M.gold); r.rotation.set(Math.random() * 3, Math.random() * 3, 0); eye.add(r); W.eyeRings.push(r); }
-  W.eyeLight = new THREE.PointLight(0xffc060, 170, 60, 1.6); eye.add(W.eyeLight);
+  W.eyeLight = null; // borrowed from the pool when act III starts
   shadowed(eye); cornea.castShadow = false;
   // floating manuscript pages
   const pageTex = canvasTex(128, 180, (g) => { g.fillStyle = '#f6efdc'; g.fillRect(0, 0, 128, 180); g.fillStyle = '#444'; for (let i = 0; i < 17; i++) g.fillRect(14, 16 + i * 9, 60 + Math.random() * 40, 2.5); });

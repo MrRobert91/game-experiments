@@ -6,7 +6,8 @@ import { Audio } from './engine/audio.js';
 import { UI } from './game/ui.js';
 import { Robot } from './game/robot.js';
 import { buildWorld, ARENA_Y } from './game/world.js';
-import { spawnDebris } from './game/actors.js';
+import { spawnDebris, Pelusa, Boss, makePiano } from './game/actors.js';
+import { makeBarrels, makeLasers, makeStealth, makeWords, Pages } from './game/extras.js';
 import { runStory } from './game/story.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -26,6 +27,8 @@ class Game {
     this.world = buildWorld(this);
     this.robot = new Robot(this, V(0, 0, 2));
     this.robot.face('off'); this.robot.frozen = true;
+    this.perf = { worst: 0, long: 0, frames: 0, phys: 0 };
+    this._warmup();
 
     let lastSfx = 0;
     this.physics.onImpact = (a, b, f) => {
@@ -47,16 +50,45 @@ class Game {
     return this;
   }
 
+  /**
+   * Build one of everything that appears later, draw a single frame with every object
+   * forced visible, then throw the extras away. This compiles all shaders and uploads all
+   * textures behind the loading screen instead of stalling the first time each thing shows up.
+   */
+  _warmup() {
+    const { gfx, physics } = this, scene = gfx.scene, far = -400, bodies = [];
+    const pel = new Pelusa(this, [0, far, 0]); bodies.push(pel.ent);
+    bodies.push(makePiano(this, [4, far, 0]));
+    const boss = new Boss(this, V(10, far, 0)); bodies.push(boss.ent, ...boss.hose);
+    const br = makeBarrels(this, [[16, 0]], far); br.stop(); bodies.push(...br.list);
+    const ls = makeLasers(this, far, [0]), st = makeStealth(this, far), wd = makeWords(this, V(0, far, 0));
+    const pg = new Pages(this); pg.add(0, far, 4, '');
+    spawnDebris(this, V(0, far, 8), 2, { emissive: 0.5 });
+    const state = [];
+    scene.traverse((o) => { state.push([o, o.visible, o.frustumCulled]); o.visible = true; o.frustumCulled = false; });
+    gfx.cam.snap = true; gfx.update(0, 0); gfx.render();
+    for (const [o, v, f] of state) { o.visible = v; o.frustumCulled = f; }
+    gfx.point(99, { intensity: 0 }); // the boss borrowed the last pool light: take it back before deleting the boss
+    ls.dispose(); st.dispose(); wd.dispose(); pg.dispose();
+    for (const e of bodies) physics.remove(e);
+    for (const t of this.temp) physics.remove(t.e);
+    this.temp.length = 0; this.pianos = 0; this.crates = this.crates.filter((c) => c.alive);
+  }
+
   _autopilot(mode) {
-    this.ui.auto = mode;
+    this.ui.auto = mode; this.ui.fast = !new URLSearchParams(location.search).get('real');
+    let holdT = 0;
     this.input.bot = () => {
       const tgt = typeof this.botTarget === 'function' ? this.botTarget() : this.botTarget;
       if (!tgt || !this.input.enabled) return null;
       const p = this.robot.position, dx = tgt.x - p.x, dz = tgt.z - p.z, d = Math.hypot(dx, dz);
       if (d < 0.25) return { x: 0, y: 0, action: false };
+      // charge-and-release when asked to (the bot really performs the super dash)
+      let hold = false;
+      if (this.botCharge && d < 4.5) { holdT += 1 / 60; hold = holdT % 1.9 < 1.4; } else holdT = 0;
       const { fx, fz } = this._camBasis();
       const wx = dx / d, wz = dz / d;
-      return { x: wx * -fz + wz * fx, y: -(wx * fx + wz * fz), action: this.botDash === 'spam' ? Math.random() < 0.08 : this.botDash && d < 3.5 };
+      return { x: wx * -fz + wz * fx, y: -(wx * fx + wz * fz), action: this.botDash === 'spam' ? Math.random() < 0.08 : this.botDash && d < 3.5, hold };
     };
   }
 
@@ -74,14 +106,22 @@ class Game {
     this.ui.pop((_v.x * 0.5 + 0.5) * innerWidth, (-_v.y * 0.5 + 0.5) * innerHeight, text, color, big);
   }
   addScore(n, pos) { this.score += n; this.ui.score(this.score); if (pos) this.pop(pos, '+' + n, '#f2c14e'); }
-  sleep(sec) { if (this.ui.auto) sec = Math.min(sec, 0.12); return new Promise((res) => { let t = 0; const f = (dt) => { t += dt; if (t >= sec) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
+  sleep(sec) { if (this.ui.fast) sec = Math.min(sec, 0.12); return new Promise((res) => { let t = 0; const f = (dt) => { t += dt; if (t >= sec) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
   until(cond, timeout = 1e9) { return new Promise((res) => { let t = 0; const f = (dt) => { t += dt; if (cond() || t > timeout) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
 
   start() {
     let last = performance.now();
     const frame = (now) => {
       requestAnimationFrame(frame);
-      const raw = Math.min(0.05, (now - last) / 1000); last = now;
+      const gap = now - last, pf = this.perf;
+      pf.frames++; if (gap > pf.worst) pf.worst = gap; if (gap > 120) pf.long++;
+      const raw = Math.min(0.05, gap / 1000); last = now;
+      const c0 = performance.now();
+      try { step(raw); } catch (e) { if (!this.crashed) { this.crashed = e; console.error('frame error', e); } }
+      const cpu = performance.now() - c0; pf.cpu = (pf.cpu || 0) + cpu; if (cpu > (pf.cpuWorst || 0)) pf.cpuWorst = cpu;
+      pf.programs = this.gfx.renderer.info.programs.length;
+    };
+    const step = (raw) => {
       let dt = raw * this.timeScale;
       if (this.stopT > 0) { this.stopT -= raw; dt *= 0.04; }
       if (this.paused3d) dt = 0;
@@ -183,8 +223,14 @@ game.init().then(() => {
     btn.onclick = null; game.focus = null;
     game.audio.start();
     document.getElementById('title').classList.add('hidden');
-    mute.classList.remove('hidden');
-    runStory(game).catch((e) => console.error(e));
+    runStory(game).catch((e) => {
+      // a real error, not one of the Narrator's: say so and offer the only honest way out
+      console.error('story error', e); game.storyError = e;
+      document.body.classList.remove('cine', 'glitch', 'modal');
+      const f = document.getElementById('fake'); f.className = 'dark';
+      f.innerHTML = '<div class="win"><header>Por el bien de la trama</header><div class="c"><i>!</i><div><b>El guion se ha roto de verdad</b><br/>Esto no es un chiste del Narrador: ha fallado algo en el juego. Recarga para volver a empezar.</div></div><footer><button>Recargar</button></footer></div>';
+      f.querySelector('button').onclick = () => location.reload();
+    });
   };
   btn.onclick = go;
   const only = new URLSearchParams(location.search).get('mini'); // debug: jump straight into a 2D minigame

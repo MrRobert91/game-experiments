@@ -18,23 +18,23 @@
     <div class="bar" id="bar-top"></div>
     <div class="bar" id="bar-bottom"></div>
 
-    <div id="hud" class="hidden">
-      <div id="objective"><span class="tag">OBJETIVO</span><span id="objective-text"></span></div>
-      <div id="awareness">
-        <span class="tag">CONSCIENCIA NARRATIVA</span>
-        <div class="meter"><i id="awareness-fill"></i></div>
-        <b id="awareness-num">0%</b>
+    <div id="top">
+      <div id="hud" class="hidden">
+        <div id="objective" class="hidden"><span class="tag">OBJETIVO</span><span id="objective-text"></span></div>
+        <button id="btn-mute" aria-label="Sonido">♪</button>
+        <div id="awareness">
+          <span class="tag">CONSCIENCIA NARRATIVA</span>
+          <div class="meter"><i id="awareness-fill"></i></div>
+          <div class="row"><span id="score"><i>★</i> <b>0</b></span><b id="awareness-num">0%</b></div>
+        </div>
       </div>
+      <div id="subtitle" class="hidden"><b></b><span></span></div>
+      <div id="toast" class="hidden"><i>★</i><div><small>LOGRO DESBLOQUEADO</small><b></b><span></span></div></div>
     </div>
-
-    <div id="score" class="hidden"><small>PUNTOS DE TRAMA</small><b>0</b></div>
     <div id="pops"></div>
-    <div id="toast" class="hidden"><i>★</i><div><small>LOGRO DESBLOQUEADO</small><b></b><span></span></div></div>
     <div id="qte" class="hidden"><p></p><div class="meter"><i></i></div><button class="btn big"></button></div>
     <div id="rpg" class="hidden"><div class="log"></div><div class="menu"></div></div>
     <div id="chapter" class="hidden"><small></small><h2></h2></div>
-    <div id="subtitle" class="hidden"><b></b><span></span></div>
-
     <div id="dialog" class="hidden">
       <div class="who"></div>
       <p class="text"></p>
@@ -59,7 +59,6 @@
       <button id="btn-action" aria-label="Embestir"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></button>
     </div>
 
-    <button id="btn-mute" class="hidden" aria-label="Sonido">♪</button>
     <div id="fade"></div>
 
     <div id="title">
