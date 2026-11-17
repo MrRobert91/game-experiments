@@ -53,7 +53,8 @@ export class Mini2D {
     const g = this.g; g.font = 'bold 9px monospace'; g.textAlign = 'center';
     for (let i = this.texts.length - 1; i >= 0; i--) {
       const t = this.texts[i]; t.t -= dt; t.y -= dt * 22;
-      g.fillStyle = '#000'; g.fillText(t.s, t.x - ox + 1, t.y + 1); g.fillStyle = t.color; g.fillText(t.s, t.x - ox, t.y);
+      const hw = g.measureText(t.s).width / 2 + 2, x = Math.max(hw, Math.min(this.W - hw, t.x - ox)); // never cut off at the edges
+      g.fillStyle = '#000'; g.fillText(t.s, x + 1, t.y + 1); g.fillStyle = t.color; g.fillText(t.s, x, t.y);
       if (t.t <= 0) this.texts.splice(i, 1);
     }
   }
