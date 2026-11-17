@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const NAMES = { narrador: 'NARRADOR', robot: 'M0P-1', pelusa: 'PELUSA', villano: 'EL ASPIRADOR', creador: 'EL CREADOR', sistema: 'SISTEMA' };
+const NAMES = { narrador: 'NARRADOR', robot: 'M0P-1', pelusa: 'PELUSA', villano: 'EL ASPIRADOR', creador: 'EL CREADOR', sistema: 'SISTEMA', productor: 'EL PRODUCTOR', critico: 'EL CRÍTICO' };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class UI {
@@ -214,6 +214,18 @@ export class UI {
   objective(html) { this.el.obj.innerHTML = html; document.getElementById('objective').classList.toggle('hidden', !html); if (html) { this.el.hud.classList.remove('hidden'); this.game.audio.beep(true); } }
   /** full-screen overlays hide the top stack so nothing shows through them */
   modal(on) { document.body.classList.toggle('modal', on); }
+  status(hp, max, lvl, stains) {
+    const h = document.getElementById('hearts'); let s = '';
+    for (let i = 0; i < max; i++) s += `<i class="${i < hp ? 'on' : ''}">♥</i>`;
+    if (h.innerHTML !== s) { h.innerHTML = s; h.classList.remove('bump'); void h.offsetWidth; h.classList.add('bump'); }
+    document.getElementById('lvl').textContent = `NV ${lvl} · ${stains} ${stains === 1 ? 'MANCHA' : 'MANCHAS'}`;
+  }
+  /** boss health bar in the top column; frac null hides it */
+  bossBar(name, frac) {
+    const el = document.getElementById('bossbar');
+    if (frac == null) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden'); el.querySelector('b').textContent = name; el.querySelector('i').style.width = Math.max(0, frac) * 100 + '%';
+  }
   awareness(pct) { this.aware = pct; this.el.awFill.style.width = pct + '%'; this.el.awNum.textContent = pct + '%'; }
   cine(on) { document.body.classList.toggle('cine', on); }
   glitch(on) { document.body.classList.toggle('glitch', on); }

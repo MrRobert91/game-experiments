@@ -190,7 +190,7 @@ export class Gfx {
     // portrait: pull back so the stage still fits
     const asp = camera.aspect, pull = asp < 1 ? 1 + (1 - asp) * 1.1 : 1;
     const k = cam.snap ? 1 : 1 - Math.exp(-rawDt * cam.stiff);
-    cam.curOffset.lerp(cam.offset, cam.snap ? 1 : 1 - Math.exp(-rawDt * 1.6));
+    cam.curOffset.lerp(cam.offset, cam.snap ? 1 : 1 - Math.exp(-rawDt * (cam.offK || 1.6))); // offK: how fast the camera swings to a new angle (chase cams want it high)
     _v.copy(cam.target).addScaledVector(cam.curOffset, pull);
     cam.pos.lerp(_v, k);
     _v.copy(cam.target); _v.y += cam.lookUp;

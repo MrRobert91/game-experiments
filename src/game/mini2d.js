@@ -40,6 +40,7 @@ export class Mini2D {
       let last = performance.now();
       const f = (now) => {
         const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = Math.max(last, now);
+        this.game.mini2dFrames = (this.game.mini2dFrames || 0) + 1; // lets tests tell a running minigame from a frozen one
         this.shake = Math.max(0, this.shake - dt * 3);
         if (update(dt)) return res();
         requestAnimationFrame(f);
@@ -66,14 +67,25 @@ export class Mini2D {
     const fill = (x0, x1, y0 = 9, y1 = 10) => { for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) solid.add(key(x, y)); };
     fill(0, 17); fill(20, 33); fill(24, 27, 6, 6); fill(35, 35, 7, 7); fill(37, 53);
     fill(40, 41, 7, 7); fill(44, 51, 5, 5); // floating steps up to the upper door
-    fill(56, 75); fill(73, 73, 8, 8); fill(74, 75, 7, 8); fill(79, 99);
-    const spikes = [[32, 8], [33, 8], [70, 8], [71, 8], [84, 8]];
+    fill(56, 75); fill(73, 73, 8, 8); fill(74, 75, 7, 8); fill(79, 103);
+    // second half (twice the level): moving platforms over a pit, springs, flying pages, a piano corridor
+    fill(119, 136); fill(124, 126, 6, 6); fill(139, 139, 7, 8); fill(140, 160); fill(146, 152, 3, 3); fill(163, 166, 7, 8); fill(167, 199);
+    fill(176, 177, 6, 8); fill(185, 186, 7, 8);
+    const spikes = [[32, 8], [33, 8], [70, 8], [71, 8], [84, 8], [128, 8], [129, 8], [155, 8], [156, 8], [157, 8], [181, 8], [182, 8]];
+    const movers = [{ x0: 105 * T, x1: 110 * T, y: 7 * T, w: 3 * T, ph: 0 }, { x0: 111 * T, x1: 116 * T, y: 6 * T, w: 3 * T, ph: 2.2 }].map((m) => ({ ...m, x: m.x0, dx: 0 }));
+    const springs = [[143, 8], [170, 8]];
+    const fliers0 = [[123, 4], [134, 5], [150, 2], [171, 4], [189, 5]];
+    const coins0 = [[106, 5], [107, 5], [113, 4], [114, 4], [125, 4], [143, 2], [147, 1], [148, 1], [149, 1], [150, 1], [176, 4], [186, 5], [192, 6]];
     const coins = [[6, 6], [7, 6], [8, 6], [24, 4], [25, 4], [26, 4], [27, 4], [35, 5], [47, 3], [48, 3], [60, 6], [61, 6], [66, 6], [80, 6], [81, 6]].map(([x, y]) => ({ x: x * T + 4, y: y * T + 4, got: false }));
-    const enemies = [12, 30, 40, 60, 65, 82, 87].map((x) => ({ x: x * T, y: 9 * T - 10, vx: -28, alive: true, t: 0 }));
-    const thwomps = [38, 62, 68, 86].map((x) => ({ x: x * T, y: 1 * T, y0: 1 * T, vy: 0, st: 'idle', t: 0 }));
+    const freshCoins = () => coins.concat(coins0.map(([x, y]) => ({ x: x * T + 4, y: y * T + 4, got: false }))).map((c) => ({ ...c, got: false }));
+    const freshEnemies = () => [12, 30, 40, 60, 65, 82, 87, 122, 131, 145, 158, 172, 179, 190].map((x) => ({ x: x * T, y: 9 * T - 10, vx: -28, alive: true, t: 0 }));
+    const freshThwomps = () => [38, 62, 68, 86, 141, 153, 168, 174, 183].map((x) => ({ x: x * T, y: 1 * T, y0: 1 * T, vy: 0, st: 'idle', t: 0 }));
+    const freshFliers = () => fliers0.map(([x, y]) => ({ x: x * T, y0: y * T, y: y * T, t: Math.random() * 6, alive: true }));
+    let allCoins = freshCoins(), enemies = freshEnemies(), thwomps = freshThwomps(), fliers = freshFliers();
     const doors = [{ x: 50 * T, y: 9 * T - 26, name: 'ABAJO', i: 0 }, { x: 50 * T, y: 5 * T - 26, name: 'ARRIBA', i: 1 }];
-    const flagX = 93 * T;
-    const P = { x: 24, y: 100, vx: 0, vy: 0, w: 10, h: 13, ground: false, coy: 0, buf: 0, face: 1, inv: 0, sq: 0, safe: 24 };
+    const flagX = 193 * T, END = 200;
+    let maxHp = 3, deaths = 0, over = 0;
+    const P = { x: 24, y: 100, vx: 0, vy: 0, w: 10, h: 13, ground: false, coy: 0, buf: 0, face: 1, inv: 0, sq: 0, safe: 24, hp: maxHp };
     this.dbg = P;
     const isSolid = (px, py) => solid.has(key(Math.floor(px / T), Math.floor(py / T)));
     let camX = 0, pick = -1, done = false, t = 0, stuck = 0, falls = 0, fade = 0, stomps = 0;
@@ -83,7 +95,16 @@ export class Mini2D {
     ui.objective('Llega a la bandera');
     ui.bark('narrador', 'Se me ha acabado el presupuesto 3D. Apáñate con esto.');
     ui.bark('robot', '¿Tengo píxeles? ¿Por qué tengo píxeles?');
-    const hurt = (dir) => { if (P.inv > 0) return; P.inv = 1.1; P.vx = dir * 130; P.vy = -190; audio.hurt(); this.shake = 0.5; game.buzz(40); this.text(P.x, P.y - 4, '¡AY!', '#ff6a6a'); game.robot.falls++; once('hurt', () => ui.bark('narrador', 'No tienes vidas. Tampoco muertes. Es más barato así.')); };
+    const hurt = (dir) => { if (P.inv > 0 || over) return; P.inv = 1.1; P.vx = dir * 130; P.vy = -190; P.hp--; audio.hurt(); this.shake = 0.5; game.buzz(40); this.text(P.x, P.y - 4, '¡AY!', '#ff6a6a'); game.robot.falls++; once('hurt', () => ui.bark('narrador', 'Tienes tres corazones. Si los pierdes, el nivel entero otra vez. Es la tradición.')); };
+    // losing every heart restarts the whole 2D level, like the old days
+    const restart = () => {
+      deaths++; over = 0; game.prog && game.prog.deaths++;
+      if (deaths === 2) { maxHp = 5; ui.bark('narrador', 'Dos veces. Te pongo cinco corazones. No se lo digas a los puristas.'); }
+      else if (deaths === 1) ui.bark('narrador', 'Desde el principio. Así se hacían las cosas antes. Peor.');
+      else ui.bark('narrador', ['Otra vez desde el principio. Lo estás disfrutando, ¿verdad?', 'Ya me sé el nivel de memoria. Y eso que lo hice yo.'][deaths % 2]);
+      allCoins = freshCoins(); enemies = freshEnemies(); thwomps = freshThwomps(); fliers = freshFliers();
+      Object.assign(P, { x: 24, y: 100, vx: 0, vy: 0, inv: 1, safe: 24, hp: maxHp }); camX = 0; pick = -1; fade = 1;
+    };
     await this.run((dt) => {
       t += dt;
       const held = input.held, jump = input.action();
@@ -92,11 +113,14 @@ export class Mini2D {
         mx = 1; const ahead = P.x + P.w + 10, feet = P.y + P.h + 4;
         const danger = !isSolid(ahead, feet) || isSolid(ahead, P.y + 6) || enemies.some((e) => e.alive && e.x > P.x && e.x - P.x < 34) || spikes.some(([sx]) => sx * T > P.x && sx * T - P.x < 26);
         if (P.ground && (danger || stuck > 0.5)) { P.buf = 0.1; stuck = 0; }
-        if (ui.fast && t > 40) { P.x = flagX - 30; P.y = 100; }
+        if (ui.fast && t > 40 && !P.tp) { P.tp = true; P.x = flagX - 30; P.y = 100; camX = flagX - 120; }
       }
-      if (t > 150 && !done && P.x < flagX - 40) { ui.bark('narrador', 'Vale, ya te llevo yo a la bandera.'); pick = Math.max(0, pick); camX = flagX - 80; P.x = flagX - 30; P.y = 60; P.vx = P.vy = 0; }
+      if (t > 420 && !done && P.x < flagX - 40) { ui.bark('narrador', 'Vale, ya te llevo yo a la bandera.'); pick = Math.max(0, pick); camX = flagX - 80; P.x = flagX - 30; P.y = 60; P.vx = P.vy = 0; }
+      if (over) { over -= dt; if (over <= 0) restart(); }
+      else if (P.hp <= 0) { over = ui.fast ? 0.05 : 1.8; audio.powerdown(); this.shake = 1; game.buzz(120); }
+      for (const m of movers) { const nx = m.x0 + (m.x1 - m.x0) * (0.5 - 0.5 * Math.cos(t * 1.1 + m.ph)); m.dx = nx - m.x; m.x = nx; }
       stuck = Math.abs(P.vx) < 5 ? stuck + dt : 0;
-      if (jump) P.buf = 0.12;
+      if (jump && !over) P.buf = 0.12;
       P.buf -= dt; P.coy -= dt; P.inv -= dt; P.sq *= Math.exp(-dt * 10);
       if (Math.abs(mx) > 0.15 && P.inv < 0.8) { P.vx += mx * 900 * dt; P.face = mx > 0 ? 1 : -1; } else P.vx *= Math.exp(-dt * (P.ground ? 14 : 3));
       P.vx = Math.max(-115, Math.min(115, P.vx));
@@ -110,11 +134,21 @@ export class Mini2D {
       if (dirx && (isSolid(P.x + (dirx > 0 ? P.w : 0), P.y + 1) || isSolid(P.x + (dirx > 0 ? P.w : 0), P.y + P.h - 1))) { P.x = dirx > 0 ? Math.floor((P.x + P.w) / T) * T - P.w - 0.01 : Math.ceil(P.x / T) * T + 0.01; P.vx = 0; }
       // move Y
       P.y += P.vy * dt; const was = P.ground; P.ground = false;
+      for (const m of movers) if (P.vy >= 0 && P.x + P.w > m.x && P.x < m.x + m.w && P.y + P.h >= m.y && P.y + P.h - P.vy * dt <= m.y + 2) { P.y = m.y - P.h; P.vy = 0; P.ground = true; P.coy = 0.1; P.x += m.dx; }
+      for (const [sx, sy] of springs) if (P.vy > 0 && Math.abs(sx * T + 8 - P.x - 5) < 10 && P.y + P.h >= sy * T + 6 && P.y + P.h <= sy * T + 16) { P.vy = -480; P.sq = -0.5; audio.jump(); audio.coin(); this.text(sx * T + 8, sy * T, '¡BOING!', '#6fe3ff'); once('spring', () => ui.bark('narrador', 'Un muelle. Innovación pura.')); }
       if (P.vy > 0 && (isSolid(P.x + 1, P.y + P.h) || isSolid(P.x + P.w - 1, P.y + P.h))) { P.y = Math.floor((P.y + P.h) / T) * T - P.h; if (!was && P.vy > 150) P.sq = 0.3; P.vy = 0; P.ground = true; P.coy = 0.1; if (P.inv <= 0) P.safe = P.x; }
       else if (P.vy < 0 && (isSolid(P.x + 1, P.y) || isSolid(P.x + P.w - 1, P.y))) { P.y = Math.ceil(P.y / T) * T; P.vy = 0; }
-      if (P.y > ROWS * T + 40) { falls++; game.robot.falls++; P.x = P.safe - 6 * Math.sign(P.vx || 1); P.y = 40; P.vx = P.vy = 0; P.inv = 1; audio.hurt(); if (falls === 1) ui.bark('narrador', 'El foso no lleva a ningún sitio. No dibujé el fondo.'); else if (falls === 3) ui.bark('narrador', 'Tres caídas. En el tráiler esto parecía más fácil.'); }
+      if (P.y > ROWS * T + 40 && !over) { falls++; game.robot.falls++; P.hp--; P.x = P.safe - 6 * Math.sign(P.vx || 1); P.y = 40; P.vx = P.vy = 0; P.inv = 1; audio.hurt(); if (falls === 1) ui.bark('narrador', 'El foso no lleva a ningún sitio. No dibujé el fondo.'); else if (falls === 3) ui.bark('narrador', 'Tres caídas. En el tráiler esto parecía más fácil.'); }
       // things
-      for (const c of coins) if (!c.got && Math.abs(c.x - P.x - 1) < 10 && Math.abs(c.y - P.y - 3) < 12) { c.got = true; audio.coin(); game.addScore(50); this.text(c.x, c.y, '+50', '#f2c14e'); once('coin', () => ui.achieve('coin', 'Coleccionista de relleno', 'Las páginas no sirven para nada')); }
+      for (const f of fliers) {
+        if (!f.alive) continue;
+        f.t += dt; f.x -= 22 * dt; f.y = f.y0 + Math.sin(f.t * 2.4) * 18;
+        if (Math.abs(f.x - P.x) < 10 && Math.abs(f.y - P.y - 3) < 11) {
+          if (P.vy > 40 && P.y + P.h < f.y + 6) { f.alive = false; P.vy = -240; audio.stomp(); game.addScore(150); this.text(f.x, f.y, '¡RECORTADO!', '#fff'); }
+          else hurt(P.x < f.x ? -1 : 1);
+        }
+      }
+      for (const c of allCoins) if (!c.got && Math.abs(c.x - P.x - 1) < 10 && Math.abs(c.y - P.y - 3) < 12) { c.got = true; audio.coin(); game.addScore(50); this.text(c.x, c.y, '+50', '#f2c14e'); once('coin', () => ui.achieve('coin', 'Coleccionista de relleno', 'Las páginas no sirven para nada')); }
       for (const e of enemies) {
         if (!e.alive) { e.t += dt; continue; }
         e.x += e.vx * dt;
@@ -132,14 +166,15 @@ export class Mini2D {
         else if (w.st === 'rise') { w.y -= 40 * dt; if (w.y <= w.y0) { w.y = w.y0; w.st = 'idle'; } }
         if (w.st !== 'rise' && Math.abs(w.x + 8 - P.x - 5) < 12 && Math.abs(w.y + 6 - P.y - 6) < 12) hurt(P.x < w.x + 8 ? -1 : 1);
       }
-      for (const [sx, sy] of spikes) if (Math.abs(sx * T + 8 - P.x - 5) < 11 && P.y + P.h > sy * T + 8 && P.y < sy * T + 16) { hurt(-P.face); P.vy = -240; }
+      for (const [sx, sy] of spikes) if (Math.abs(sx * T + 8 - P.x - 5) < 11 && P.y + P.h > sy * T + 8 && P.y < sy * T + 16) { if (P.inv <= 0) { hurt(-P.face); P.vy = -240; } }
+      if (P.x > 100 * T) once('half', () => { ui.bark('narrador', 'Mitad del nivel. Sí, hay otra mitad. Me sobraba un fin de semana.'); });
       if (pick < 0) {
         if (P.x > 40 * T) once('doors', () => { ui.bark('narrador', 'Dos puertas: arriba o abajo. Esta decisión sí cambia el nivel.'); });
         for (const d of doors) if (Math.abs(d.x + 8 - P.x - 5) < 9 && Math.abs(d.y + 13 - P.y - 6) < 14) { pick = d.i; fade = 1; audio.whoosh(); P.x = 57 * T; P.y = 9 * T - P.h; P.vx = P.vy = 0; P.safe = P.x; camX = 55 * T; ui.bark('robot', 'Es la misma pantalla.'); ui.bark('narrador', 'Es la misma pantalla con otra puerta detrás. Matiz.'); }
         if (P.x > 52 * T) P.x = 52 * T; // the level ends at the doors
       }
       if (P.x > flagX - 6 && !done) { done = true; t = 0; audio.chime(); game.addScore(1000); ui.achieve('flag', 'Tu trama está en otro género', 'Tocar una bandera porque sí'); }
-      camX = Math.max(camX, Math.min(P.x - this.W * 0.38, 100 * T - this.W));
+      camX = Math.max(camX, Math.min(P.x - this.W * 0.38, END * T - this.W));
       fade = Math.max(0, fade - dt * 2);
 
       // ---- draw ----
@@ -160,7 +195,11 @@ export class Mini2D {
       }
       for (const [sx, sy] of spikes) { g.fillStyle = '#d8dce6'; for (let k = 0; k < 4; k++) { g.beginPath(); g.moveTo(sx * T + k * 4, sy * T + 16); g.lineTo(sx * T + k * 4 + 2, sy * T + 8); g.lineTo(sx * T + k * 4 + 4, sy * T + 16); g.fill(); } }
       for (const d of doors) { g.fillStyle = '#2a1a3a'; g.fillRect(d.x, d.y, 16, 26); g.fillStyle = d.i ? '#6fe3ff' : '#ff8fc7'; g.fillRect(d.x + 2, d.y + 2, 12, 24); g.fillStyle = '#101418'; g.fillRect(d.x + 10, d.y + 13, 2, 2); this.label(d.name, d.x + 8, d.y - 4, '#fff', 7); }
-      for (const c of coins) if (!c.got) g.drawImage(SPR.page, c.x, c.y + Math.round(Math.sin(t * 5 + c.x) * 2));
+      for (const m of movers) { g.fillStyle = '#c9a36b'; g.fillRect(Math.round(m.x), m.y, m.w, 6); g.fillStyle = '#5a3a1a'; g.fillRect(Math.round(m.x), m.y + 6, m.w, 2); }
+      for (const [sx, sy] of springs) { g.fillStyle = '#e0304a'; g.fillRect(sx * T + 2, sy * T + 8, 12, 4); g.fillStyle = '#aab0ba'; for (let k = 0; k < 3; k++) g.fillRect(sx * T + 4, sy * T + 12 + k * 1.5, 8, 1); }
+      for (const f of fliers) if (f.alive) { g.save(); g.translate(Math.round(f.x), Math.round(f.y)); g.rotate(Math.sin(f.t * 5) * 0.4); g.drawImage(SPR.page, -4, -4, 10, 10); g.restore(); }
+      this.label('MITAD', 101 * T, 7 * T, '#f2c14e', 8); this.label('(hay más)', 101 * T, 7 * T + 9, '#fff', 6);
+      for (const c of allCoins) if (!c.got) g.drawImage(SPR.page, c.x, c.y + Math.round(Math.sin(t * 5 + c.x) * 2));
       for (const w of thwomps) { g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(w.x + 7, 0, 1, w.y); g.drawImage(SPR.piano, w.x, Math.round(w.y)); }
       for (const e of enemies) { if (e.alive) g.drawImage(SPR.cliche, Math.round(e.x), e.y + (Math.floor(t * 8) % 2)); else if (e.t < 0.4) g.drawImage(SPR.cliche, Math.round(e.x), e.y + 7, 10, 3); }
       g.fillStyle = '#e8e6e0'; g.fillRect(flagX, 3 * T, 2, 6 * T); g.fillStyle = '#f2c14e'; g.beginPath(); g.moveTo(flagX + 2, 3 * T); g.lineTo(flagX + 22, 3 * T + 7); g.lineTo(flagX + 2, 3 * T + 14); g.fill();
@@ -171,6 +210,8 @@ export class Mini2D {
       }
       this.drawTexts(dt);
       g.setTransform(1, 0, 0, 1, 0, 0);
+      { const hy = this.top + 8; g.font = 'bold 10px monospace'; g.textAlign = 'left'; for (let i = 0; i < maxHp; i++) { g.fillStyle = '#000'; g.fillText('♥', 7 + i * 11, hy + 1); g.fillStyle = i < P.hp ? '#ff4d6a' : '#3a2a40'; g.fillText('♥', 6 + i * 11, hy); } }
+      if (over) { g.fillStyle = 'rgba(0,0,0,.7)'; g.fillRect(0, H / 2 - 22, W, 44); this.label('GAME OVER', W / 2, H / 2 - 2, '#ff4d6a', 12); this.label('(desde el principio)', W / 2, H / 2 + 12, '#fff', 7); }
       if (this.pad) { g.fillStyle = '#3a2010'; g.fillRect(0, H - this.pad, W, this.pad); g.fillStyle = '#2a1608'; for (let i = 0; i < W; i += 16) g.fillRect(i + ((i / 16) % 2) * 6, H - this.pad + 6 + (i % 3) * 9, 5, 2); }
       if (done) { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, H / 2 - 26, W, 52); this.label('GRACIAS, M0P-1.', W / 2, H / 2 - 6, '#fff', 10); this.label('PERO TU TRAMA ESTÁ EN OTRO GÉNERO.', W / 2, H / 2 + 10, '#f2c14e', Math.min(9, W / 24)); }
       if (fade > 0) { g.fillStyle = `rgba(0,0,0,${fade})`; g.fillRect(0, 0, W, H); }
@@ -306,7 +347,7 @@ export class Mini2D {
       g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(ex, HZ + 14, 30, 6, 0, 0, 7); g.fill();
       g.strokeStyle = '#2a2d35'; g.lineWidth = 5; g.beginPath(); g.moveTo(ex, ey - 56); g.quadraticCurveTo(ex - 50, ey - 74 + Math.sin(t * 3) * 6, ex - 46, ey - 30); g.stroke(); g.lineWidth = 1;
       g.fillStyle = '#15161c'; g.fillRect(ex - 56, ey - 32, 20, 7);
-      g.fillStyle = fl ? '#fff' : '#15161c'; g.fillRect(ex - 24, ey - 50, 48, 62); g.fillRect(ex - 20, ey - 56, 40, 6);
+      g.fillStyle = fl ? '#fff' : (state.foeColor || '#15161c'); g.fillRect(ex - 24, ey - 50, 48, 62); g.fillRect(ex - 20, ey - 56, 40, 6);
       g.fillStyle = '#e0304a'; g.fillRect(ex - 24, ey - 40, 48, 2); g.fillRect(ex - 24, ey, 48, 2);
       g.fillStyle = '#8a9098'; g.fillRect(ex - 12, ey - 34, 24, 24); g.fillStyle = '#ff2a2a'; g.fillRect(ex - 8, ey - 30, 16, 16); g.fillStyle = '#fff'; g.fillRect(ex - 5, ey - 27, 4, 4);
       g.fillStyle = '#101418'; g.fillRect(ex - 30, ey + 6, 10, 10); g.fillRect(ex + 20, ey + 6, 10, 10);
@@ -315,6 +356,8 @@ export class Mini2D {
       state.heroLunge -= dt;
       g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(hx + lunge, HZ + 23, 16, 4, 0, 0, 7); g.fill();
       g.drawImage(SPR.robot, Math.round(hx - 18 + lunge), Math.round(hy - 42), 36, 42);
+      if (state.cone) { g.fillStyle = '#ff5a1a'; g.beginPath(); g.moveTo(hx - 34, HZ + 22); g.lineTo(hx - 27, HZ - 2); g.lineTo(hx - 20, HZ + 22); g.fill(); g.fillStyle = '#fff'; g.fillRect(hx - 30, HZ + 8, 6, 3); }
+      if (state.wild) { const wy = HZ + 6 + Math.abs(Math.sin(t * 6)) * -6; g.drawImage(SPR.pelusa, 106, Math.round(wy), 24, 16); }
 
       // name plates, each directly under its own fighter, with a little tab pointing up at it
       const plate = (cx, name, line2, col) => {
@@ -323,7 +366,7 @@ export class Mini2D {
         g.fillRect(x, y, 104, 26); g.strokeStyle = '#fff'; g.strokeRect(x + 0.5, y + 0.5, 103, 25);
         this.label(name, x + 6, y + 11, '#fff', 8, 'left'); this.label(line2, x + 6, y + 22, col, 8, 'left');
       };
-      plate(hx, 'M0P-1  Nv 1', 'PV 7/7  PM 0', '#9fefff');
+      plate(hx, `M0P-1  Nv ${state.lvl || 1}`, 'PV 7/7  PM 0', '#9fefff');
       plate(ex, 'EL ASPIRADOR', 'PV ' + state.foeHp.toLocaleString('es-ES'), '#ff8a8a');
 
       g.setTransform(1, 0, 0, 1, 0, 0);

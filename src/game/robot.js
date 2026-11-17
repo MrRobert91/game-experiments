@@ -158,7 +158,7 @@ export class Robot {
     const dv = Math.hypot(v.x - this.lastV.x, v.y - this.lastV.y, v.z - this.lastV.z);
     if (dv > 8.5 && this.stun <= 0 && !this.frozen) {
       const dashing = this.dashT > 0;
-      this.knock(dashing ? 0.55 : 1.3);
+      if (dashing || !this.hurt) this.knock(dashing ? 0.55 : 1.3); else this.hurt(1, null, 1.3); // something heavy hit us
       this.game.audio.clank(dashing ? 0.7 : 1);
       this.game.gfx.shake(dashing ? 0.25 : 0.45);
       this.game.gfx.particles.burst(this.position.clone().setY(this.pos.y + 0.6), 14, { color: 0xffc070, speed: 5, life: 0.5, size: 0.12 });
@@ -182,7 +182,7 @@ export class Robot {
     if (moving) this.yaw = Math.atan2(mx, mz);
     // hold to charge, release for a super dash
     if (held && this.dashT <= 0) {
-      this.holdT += dt; const c = Math.min(1, Math.max(0, (this.holdT - 0.28) / 0.8));
+      this.holdT += dt; const c = Math.min(1, Math.max(0, (this.holdT - 0.28) / (0.8 / (this.chargeMul || 1))));
       if (c > 0 && Math.floor(this.holdT * 12) !== Math.floor((this.holdT - dt) * 12)) this.game.audio.charge(c);
       this.charge = c;
       if (c > 0) {
@@ -192,7 +192,7 @@ export class Robot {
       }
     } else if (this.charge > 0.3) {
       const c = this.charge; this.charge = 0; this.holdT = 0;
-      this.dashT = 0.3 + c * 0.16; this.superT = this.dashT + 0.12; this.dashCd = 0.9; this.dashSpeed = 17 + c * 9; this.dashes++;
+      this.dashT = 0.3 + c * 0.16; this.superT = this.dashT + 0.12; this.dashCd = 0.9 * (this.cdMul || 1); this.dashSpeed = 17 + c * 9; this.dashes++;
       this.dashDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       this.game.audio.superDash(); this.game.gfx.speed = 1; this.game.gfx.shake(0.3); this.stV -= 14; this.game.buzz(40);
       this.game.gfx.cam.fov = 50; setTimeout(() => (this.game.gfx.cam.fov = 42), 420);
@@ -200,7 +200,7 @@ export class Robot {
       this.game.pop(this.position.clone().setY(this.pos.y + 1.8), '¡TURBOFREGONA!', '#6fe3ff');
     } else { this.charge = 0; if (!held) this.holdT = 0; }
     if (wantDash && this.dashCd <= 0 && this.dashT <= 0) {
-      this.dashT = 0.26; this.dashCd = 0.75; this.dashSpeed = 15; this.stV -= 8; this.game.gfx.speed = Math.max(this.game.gfx.speed, 0.5); this.dashes++;
+      this.dashT = 0.26; this.dashCd = 0.75 * (this.cdMul || 1); this.dashSpeed = 15; this.stV -= 8; this.game.gfx.speed = Math.max(this.game.gfx.speed, 0.5); this.dashes++;
       this.dashDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       this.game.audio.dash();
       this.game.gfx.cam.fov = 46; setTimeout(() => (this.game.gfx.cam.fov = 42), 260);

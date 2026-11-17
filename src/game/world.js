@@ -143,11 +143,15 @@ export function buildWorld(game) {
     g.position.set(x, A, z); scene.add(shadowed(g));
     physics.add({ type: 'fixed', pos: [x, A + 4, z], shapes: [{ kind: 'cyl', size: [1.1, 4] }], group: GROUPS.world });
     W.pillars.push(V(x, A, z));
-    if (!gfx.low || i % 2 === 0) gfx.point(gfx.low ? 1 + i / 2 : 1 + i, { color: i % 2 || (gfx.low && i === 2) ? 0x29d3ff : 0xff2a6d, intensity: gfx.low ? 90 : 60, distance: gfx.low ? 30 : 22, pos: [x * 0.8, A + 3.2, z * 0.8] });
+    W.pillarLights = W.pillarLights || []; W.pillarLights.push([i, x, z]);
   }
   const bigSign = new THREE.Mesh(new THREE.PlaneGeometry(22, 3.6), new THREE.MeshBasicMaterial({ transparent: true, toneMapped: false, map: textTex(['FÁBRICA DE GIROS', 'ARGUMENTALES S.L.'], { w: 2048, h: 340, color: '#ff5a8a', glow: '#ff2a6d', font: '800 130px system-ui' }) }));
   bigSign.position.set(0, A + 11, -19.5); scene.add(bigSign);
   for (const x of [-8, 8]) { const c = lightCone(18, 6, 0xff5a8a, 0.1); c.position.set(x, A + 18, -6); scene.add(c); }
+
+  // the pillar lights borrow pool lights; levels elsewhere borrow them too, so this puts them back
+  W.lightArena = () => { for (const [i, x, z] of W.pillarLights) if (!gfx.low || i % 2 === 0) gfx.point(gfx.low ? 1 + i / 2 : 1 + i, { color: i % 2 || (gfx.low && i === 2) ? 0x29d3ff : 0xff2a6d, intensity: gfx.low ? 90 : 60, distance: gfx.low ? 30 : 22, pos: [x * 0.8, A + 3.2, z * 0.8] }); };
+  W.lightArena();
 
   // ================= ACT III: entre bastidores =================
   W.bridge = [];
