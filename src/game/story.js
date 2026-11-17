@@ -471,14 +471,16 @@ export async function runStory(game) {
     [-25.5, () => { ui.bark('narrador', 'Láseres giratorios. Embiste para atravesarlos.'); }],
     [-27, () => { raining = true; ui.bark('narrador', 'De pronto, llovieron pianos.'); ui.bark('robot', '¿Otra vez pianos?'); ui.bark('narrador', 'Compré cuarenta. Hay que amortizarlos.'); }],
     [-32, () => { ui.bark('robot', 'Ahí hay una caja que pone «PELUSA_v2_final_FINAL».'); ui.bark('narrador', 'No hay ninguna caja.'); }],
-    [-35, () => { hoppers = makeHoppers(game, [[-1.2, -42], [1.3, -43.5]], A); ui.bark('narrador', 'Esos pianos tienen patas. Se me ocurrió anoche.'); ui.bark('robot', 'Tú no duermes, ¿verdad?'); }],
-    [-38, () => { ui.bark('narrador', 'Una cinta transportadora que va al revés. Muy metafórico. Embiste para avanzar.'); }],
-    [-45, () => { ui.bark('robot', '¿Eso son bolos? ¿Por qué ruedan hacia mí?'); ui.bark('narrador', 'Porque el puente está inclinado. Hacia ti. Por la trama.'); }],
+    [-35, () => { hoppers = makeHoppers(game, [[0, -43]], A); ui.bark('narrador', 'Esos pianos tienen patas. Se me ocurrió anoche.'); ui.bark('robot', 'Tú no duermes, ¿verdad?'); }],
+    [-31, () => { ui.bark('robot', '¿Eso son bolos? ¿Por qué ruedan hacia mí?'); ui.bark('narrador', 'Porque el puente está inclinado. Hacia ti. Por la trama.'); }],
+    [-40, () => { ui.bark('narrador', 'Una cinta transportadora que va al revés. Muy metafórico. Embiste para avanzar.'); }],
     [-53, () => { ui.bark('robot', 'Aquí se acaba el puente.'); ui.bark('narrador', 'Sí. Tú sigue andando con confianza.'); }],
   ];
+  zLines.sort((a, b) => b[0] - a[0]); // fired in order of distance along the bridge
   let raining = false, rainT = 0, livePianos = 0, hoppers = null;
-  const lasers = makeLasers(game, A, [-29.5, -36, -42, -51]); lasers.show();
-  const hazards = bridgeHazards(game, A, { gloves: [-33, -47.5], conveyor: [-39, -44.5], ballsFrom: -55 });
+  // spaced so there is always a safe gap (each beam reaches 2.7 m): lasers first, then the conveyor, then one glove before the end
+  const lasers = makeLasers(game, A, [-27, -37]); lasers.show();
+  const hazards = bridgeHazards(game, A, { gloves: [-49], conveyor: [-41.5, -45], ballsFrom: -47 });
   pages.add(1.6, A, -33.5, 'Nota nº 6: «Terminar el puente.» Sin tachar.');
   pages.add(-12, A, SZ + 6, 'Nota nº 7: «El ojo gigante es demasiado.» Respuesta, con otra letra: «No lo es.»');
   pages.add(12, A, SZ - 3, 'Nota nº 8: «Final: que todo fuera por la trama. ¿Demasiado obvio?» Respuesta: «Sí.»');
@@ -486,13 +488,13 @@ export async function runStory(game) {
   const rainTick = (dt) => {
     const p = robot.position;
     while (zLines.length && p.z < zLines[0][0]) zLines.shift()[1]();
-    if (p.z < -26 && p.z > BE && p.y > A - 1) game.checkpoint.set(0, A, p.z < -48 ? -46 : p.z < -37 ? -35 : -24);
+    if (p.z < -26 && p.z > BE && p.y > A - 1) game.checkpoint.set(0, A, p.z < -46 ? -46.5 : p.z < -40.5 ? -40.6 : p.z < -31 ? -32 : -23.5); // checkpoints only in safe gaps
     if (p.z < BE - 0.3 && Math.abs(p.x) < 4) game.falling = true; // walking off the unfinished end is the way forward
     for (let i = marks.length - 1; i >= 0; i--) { const m = marks[i]; m.t -= dt; m.mesh.scale.setScalar(Math.max(0.01, m.t / 1.5)); if (m.t <= 0) { scene.remove(m.mesh); marks.splice(i, 1); } }
     if (!raining) return;
     rainT -= dt;
-    if (rainT <= 0 && livePianos < 3 && p.z < -22 && p.z > BE + 2) {
-      rainT = 1.9;
+    if (rainT <= 0 && livePianos < 2 && p.z < -22 && p.z > -44) { // no pianos on the final stretch
+      rainT = 2.6;
       const v = robot.chassis.body.linvel();
       const x = THREE.MathUtils.clamp(p.x + v.x * 0.6 + (Math.random() - 0.5) * 3.2, -2, 2), z = p.z + v.z * 1.2 - 1.5 + (Math.random() - 0.5) * 3;
       const e = makePiano(game, [x, A + 22, z], { rotY: Math.random() * 6, vy: -9 }); game.pianos++; livePianos++;

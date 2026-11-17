@@ -156,10 +156,10 @@ export function makeLasers(game, y, zs) {
     const r = game.robot, rp = r.position;
     for (const l of list) {
       if (!l.g.visible) continue;
-      l.a += dt * 1.5 * l.dir; l.g.rotation.y = -l.a;
+      l.a += dt * 1.1 * l.dir; l.g.rotation.y = -l.a;
       const dx = rp.x, dz = rp.z - l.z, rr = Math.hypot(dx, dz);
       if (rr < 2.8 && rr > 0.25 && r.stun <= 0 && r.dashT <= 0 && rp.y < y + 0.7 && Math.abs(dx * Math.sin(l.a) - dz * Math.cos(l.a)) < 0.42) {
-        r.hurt(1, { x: -Math.sin(l.a) * 6 * l.dir, y: 7, z: Math.cos(l.a) * 6 * l.dir }, 1);
+        r.hurt(1, { x: -rp.x * 2, y: 6, z: -8 }, 0.8); // pushed on along the bridge and back to its middle: never into the next hazard or off the edge
         game.audio.laser(); game.gfx.shake(0.4); game.hitstop(0.06); game.pop(rp.clone().setY(rp.y + 1.5), '¡ZAS!', '#ff4050');
       }
     }

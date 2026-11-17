@@ -15,11 +15,11 @@ El Narrador cambia de género cada vez que el robot se queja, así que la partid
 - el combate contra El Aspirador en **estilo cómic**, con barriles rojos que explotan en cadena
 - un interludio de **sigilo en cine negro** con guardias de cartón
 - el **Almacén de Atrezo**: un nivel grande para explorar, con tres nidos de pelusas, calcetines y grapadoras que barrer, 8 secretos, objetos con los que interactuar y el **Pulverizador 3000**, un arma que dispara sola
-- una **carrera de karts** a tres vueltas contra El Productor, con derrapes, turbos y cáscaras de plátano
+- una **carrera de karts** a tres vueltas contra El Productor en un circuito largo con gradas y público, boxes, árboles, montañas y semáforo de salida, con derrapes, turbos y cáscaras de plátano
 - un puente sin terminar con láseres, guantes de boxeo, una cinta transportadora que va al revés, bolos rodando y **pianos con patas**
 - un **matamarcianos** contra El Deadline
 - tres oleadas de extras que barrer en el escenario del Narrador
-- un **juego de lucha 2D con físicas** contra El Crítico: dos muñecos de trapo que se zurran
+- un **juego de lucha 2D con físicas** contra El Crítico, al mejor de tres asaltos, en un cuadrilátero con público: los fregonazos mandan al rival contra las cuerdas
 - el jefe final en dos fases: primero cortar los hilos de la trama, luego un ojo gigante con barra de vida que lanza rayos, ondas, pianos, adverbios y extras
 - y el truco de cartas del final, con un giro más detrás
 
@@ -64,7 +64,7 @@ Un stick y un botón.
 | Teclado | WASD o flechas | Espacio (mantener y soltar: turbofregona) | Espacio / Enter, teclas 1 y 2, o clic |
 | Móvil | arrastrar en cualquier parte de la pantalla | botón de la derecha (mantener y soltar: turbofregona) | tocar |
 
-El mismo botón salta en el plataformas, suelta la bomba de espuma en el matamarcianos, derrapa en el kart (mantener al girar) y pega en la pelea 2D (tocar: puñetazo; mantener y soltar: fregonazo; stick arriba: saltar). La embestida atraviesa los láseres y la turbofregona rompe cajas, barriles y pianos con patas.
+El mismo botón salta en el plataformas, suelta la bomba de espuma en el matamarcianos, derrapa en el kart (mantener al girar) y pega en la pelea 2D (tocar: puñetazo; mantener y soltar: fregonazo; W, flecha arriba o stick arriba: saltar). La embestida atraviesa los láseres y la turbofregona rompe cajas, barriles y pianos con patas.
 
 Funciona en vertical y en horizontal. En móvil el juego baja solo la resolución si el dispositivo no llega.
 
