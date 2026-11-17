@@ -78,8 +78,16 @@ export async function runStory(game) {
   // a tutorial nobody asked for
   await N('Y ahora, un tutorial que nadie ha pedido. Mantén pulsado el botón de embestir y suéltalo contra una caja.');
   ui.objective('Mantén ⚡ y suelta: rompe una caja');
-  if (ui.auto) game.smashed++;
-  await game.until(() => game.smashed >= 1);
+  if (ui.fast) game.smashed++;
+  game.botCharge = true; game.botTarget = () => { const c = game.crates.find((c) => c.alive); if (!c) return null; const t = c.body.translation(); return V(t.x, 0, t.z); };
+  await game.until(() => game.smashed >= 1, 45);
+  game.botCharge = false; game.botTarget = null;
+  if (game.smashed < 1) { // never leave the player stuck in a tutorial
+    await N('Da igual. Ya la rompo yo. Así, ¿ves?');
+    const c = game.crates.find((c) => c.alive);
+    if (c) { const t = c.body.translation(), cp = V(t.x, t.y, t.z); physics.remove(c); spawnDebris(game, cp, 12, { color: 0x9a6b3c, size: 0.22, speed: 8 }); audio.thud(1.2); gfx.shake(0.3); game.pop(cp, '¡CRAC!', '#ffb060'); }
+    game.smashed++;
+  }
   await ui.barksDone(); ui.objective('');
   await R('¿Por qué sé hacer eso? Soy un friegasuelos.', 'sus');
   await N('Las reseñas pedían «profundidad mecánica». Ahí la tienes. Se llama turbofregona.');
@@ -159,7 +167,8 @@ export async function runStory(game) {
     game.tickers.add(doorTick); audio.whoosh();
     ui.objective('Sal por la puerta');
     game.botTarget = V(0, 0, -9.5);
-    await game.until(() => robot.position.z < -8);
+    await game.until(() => robot.position.z < -8, 60);
+    if (robot.position.z >= -8) ui.bark('narrador', 'Tardas mucho. Te saco yo.');
     game.botTarget = null; ui.objective('');
     await ui.fade(true, 500);
     game.tickers.delete(doorTick); W.door.position.y = 1.5;
@@ -192,15 +201,15 @@ export async function runStory(game) {
     e.body.setAngvel({ x: Math.random() * 3 - 1.5, y: Math.random() * 2 - 1, z: Math.random() * 3 - 1.5 }, true);
     game.temp.push({ e, t: ttl });
   };
-  if (picks[1] === 1) for (const w of W.walls) { const t = w.body.translation(); toDynamic(w, GROUPS.debris, { x: t.x * 1.6, y: 7, z: t.z * 1.6 }, 7); }
+  if (picks[1] === 1) for (const w of W.walls) { const t = w.body.translation(); toDynamic(w, GROUPS.fall, { x: t.x * 1.6, y: 7, z: t.z * 1.6 }, 7); }
   const rp = robot.position;
   const order = [...W.tiles].sort((a, b) => dist(rp, a.body.translation().x, a.body.translation().z) - dist(rp, b.body.translation().x, b.body.translation().z));
   robot.knock(99);
   for (let i = 0; i < order.length; i++) {
-    toDynamic(order[i], GROUPS.debris, { x: 0, y: -1 - Math.random() * 3, z: 0 }, 12);
+    toDynamic(order[i], GROUPS.fall, { x: 0, y: -1 - Math.random() * 3, z: 0 }, 12);
     if (i % 4 === 3) await game.sleep(0.05);
   }
-  for (const p of W.props) p.body.wakeUp();
+  for (const p of W.props) if (p.alive) p.body.wakeUp(); // a smashed crate is gone: touching its body would throw
   cam.stiff = 9; ui.achieve('floor', 'Suelo opcional', 'Descubrir que el suelo era decorado');
   await game.sleep(0.7);
   // out of 3D budget: the fall is finished as an 8-bit platformer
@@ -212,7 +221,7 @@ export async function runStory(game) {
   ui.bark('narrador', 'Ya ha llegado la subvención. Volvemos al 3D.');
   ui.chapter('ACTO II', 'El villano', 2400);
   await game.until(() => robot.position.y < A + 30, 6);
-  W.closet.visible = false; W.lampLight.intensity = 0; W.exitLight.intensity = 0;
+  W.closet.visible = false; W.lamp.visible = false; gfx.spot(0, { intensity: 0 }); W.exitLight.intensity = 0; // lights go back to the scene root before their parent is hidden
   for (const w of W.walls) if (w.alive) physics.remove(w);
   game.floorY = A; game.checkpoint.set(0, A, 4);
   cam.offset.set(0, 11.5, 15);
@@ -258,7 +267,7 @@ export async function runStory(game) {
   // first, the cheap version: a turn-based battle where every command is the same command
   {
     const st = { foeHp: 999999, foeFlash: 0, heroLunge: 0, stop: false };
-    mini.battleScene(st); audio.mood('chip'); ui.cine(false);
+    mini.battleScene(st); audio.mood('chip'); ui.cine(false); ui.showControls(false); // menus only: no stick or button under the battle box
     const strike = async () => { st.heroLunge = 0.35; await ui.wait(250); st.foeFlash = 0.5; st.foeHp -= 9999; mini.shake = 1; audio.explode(); mini.text(mini.W * 0.7, mini.H * 0.3, '9999', '#ffd24a'); game.addScore(9999); await ui.rpgLog('¡9999 puntos de daño!'); };
     picks.rpg = await ui.rpgMenu(fight ? '¡EL ASPIRADOR te corta el paso!' : '¡EL ASPIRADOR quiere pelea! (Tú no.)', ['Atacar', 'Magia', 'Objeto', 'Huir']);
     await ui.rpgLog(['M0P-1 ataca… con la fregona.', 'M0P-1 conjura… la fregona.', 'M0P-1 usa un objeto: la fregona.', 'M0P-1 huye… hacia delante, fregona en mano.'][picks.rpg]);
@@ -271,7 +280,7 @@ export async function runStory(game) {
     await R('Le quedan novecientos ochenta mil puntos de vida. Esto va a durar horas.', 'sus');
     await N('Los combates por turnos alargan la duración. Queda muy bien en la caja.');
     await ui.rpgMenu('¿Qué hará M0P-1?', ['Saltarse el combate por turnos']);
-    ui.rpgHide(); st.stop = true; mini.close(); audio.mood('tense');
+    ui.rpgHide(); st.stop = true; mini.close(); audio.mood('tense'); ui.showControls(true);
     ui.achieve('rpg', 'Fregar, fregar, fregar', 'Usar las cuatro opciones a la vez');
     await N('Vale. Tiempo real. Pero lo pongo en estilo cómic, que he leído que vende.');
     gfx.style('comic');
@@ -293,15 +302,17 @@ export async function runStory(game) {
   let wallQuip = false;
   boss.onCrash = (p) => {
     const pillar = W.pillars.some((c) => dist(p, c.x, c.z) < 3.4);
-    if (pillar || !fight) hurt(p);
+    if (pillar || !fight || lenient) hurt(p);
     else if (!wallQuip) { wallQuip = true; ui.bark('narrador', 'Está aturdido. ¡Embístelo ahora! O llévalo contra una columna.'); }
   };
   let hitQuip = 0;
   boss.onHitPlayer = () => { robot.falls++; if (hitQuip++ < 2) ui.bark('narrador', hitQuip === 1 ? '¡Uy! Eso ha dolido. A la trama le ha venido genial.' : 'Otra vez. Estás dando mucho juego.'); };
-  let ramCd = 0;
+  let ramCd = 0, fightT = 0, lenient = false;
   const ramTick = (dt) => {
-    ramCd -= dt;
+    ramCd -= dt; fightT += dt;
     const bp = boss.position;
+    if (bp.y < A - 6 || Math.hypot(bp.x, bp.z) > 24) { boss.ent.body.setTranslation({ x: 0, y: A + 6, z: 0 }, true); boss.ent.body.setLinvel({ x: 0, y: 0, z: 0 }, true); boss.state = 'idle'; boss.t = 0; } // he fell out of his own lair
+    if (fight && fightT > 75 && !lenient) { lenient = true; ui.bark('narrador', 'Esto se alarga. A partir de ahora cuenta cualquier golpe.'); }
     if (fight && boss.state === 'stun' && robot.dashT > 0 && ramCd <= 0 && dist(robot.position, bp.x, bp.z) < 2.3) { ramCd = 1.2; boss.t = Math.max(boss.t, 1.9); hurt(bp); }
   };
   game.tickers.add(ramTick);
@@ -365,7 +376,7 @@ export async function runStory(game) {
     else { stealth.off(); await N('Otra vez. Mira, hago la vista gorda. Pasa.'); ui.objective('<s>Sin que te vean.</s> <em>Llega a la salida</em>'); seenBusy = false; }
   };
   game.botTarget = () => { const p = robot.position; return Math.abs(p.x) > 2 && p.z < -6 ? V(0, 0, p.z) : V(0, 0, -16.5); };
-  await game.until(() => robot.position.z < -13.2 && !seenBusy);
+  await game.until(() => robot.position.z < -13.2 && !seenBusy || !stealth.on && robot.position.z < -13.2, 150);
   game.botTarget = null; stealth.caught = null; ui.objective(''); ui.cine(true);
   if (seen === 0) { await N('Has pasado sin que te vean. Tampoco miraba nadie: los focos van con temporizador.'); ui.achieve('ghost', 'Fantasma', 'Burlar a unos focos con temporizador'); }
   await R('¿Y esos guardias?', 'sus');
@@ -382,8 +393,9 @@ export async function runStory(game) {
   physics.add({ type: 'fixed', pos: [0, A - 0.25, (-19.5 + BE) / 2], shapes: [{ kind: 'box', size: [4.6, 0.5, -BE - 19.5 + 1] }], group: GROUPS.world, friction: 0.8 });
   physics.add({ type: 'fixed', pos: [0, A - 0.6, SZ], shapes: [{ kind: 'cyl', size: [16.6, 0.6] }], group: GROUPS.world, friction: 0.8 });
   W.junk.visible = W.stage.visible = W.eye.visible = W.pages.visible = true;
+  W.eyeLight = gfx.point(0, { color: 0xffc060, intensity: 170, distance: 60, decay: 1.6, parent: W.eye });
   W.pylons.forEach((p) => { p.group.visible = p.cable.visible = true; p.ent = physics.add({ type: 'fixed', pos: [p.pos.x, A + 1.5, p.pos.z], shapes: [{ kind: 'cyl', size: [0.55, 1.5] }], group: GROUPS.world }); });
-  W.bridge.slice(0, 13).forEach((b, i) => setTimeout(() => { b.mesh.visible = true; b.t = 0; b.mesh.scale.setScalar(0.001); if (i % 3 === 0) audio.ui(); }, ui.auto ? 0 : i * 110));
+  W.bridge.slice(0, 13).forEach((b, i) => setTimeout(() => { b.mesh.visible = true; b.t = 0; b.mesh.scale.setScalar(0.001); if (i % 3 === 0) audio.ui(); }, ui.fast ? 0 : i * 110));
   cam.offset.set(0, 7.5, 12.5);
   game.focus = V(0, A + 4, -40); game.focusMix = 0.35;
   ui.chapter('ACTO III', 'Entre bastidores', 2600);
@@ -518,7 +530,7 @@ export async function runStory(game) {
   gfx.scene.fog.color.set(0x05060d); gfx.scene.fog.density = 0.012; gfx.hemi.color.set(0x8fa8ff); gfx.hemi.intensity = 0.3; gfx.key.intensity = 1.2;
   W.eye.position.set(0, eyeY0, SZ - 7); W.eyeLight.intensity = 170; W.irisMat.emissiveIntensity = 1.5; W.junk.visible = false;
   robot.teleport(0, A + 0.1, SZ + 3, 0); robot.frozen = true; robot.face('idle');
-  const spotL = new THREE.SpotLight(0xfff0d0, 900, 40, 0.3, 0.5, 1.5); spotL.position.set(0, A + 16, SZ + 6); spotL.target.position.set(0, A, SZ + 3); scene.add(spotL, spotL.target);
+  gfx.spot(0, { color: 0xfff0d0, intensity: 240, distance: 40, angle: 0.3, penumbra: 0.5, decay: 1.5, pos: [0, A + 16, SZ + 6], target: [0, A, SZ + 3] });
   cam.offset.set(3.5, 3, 9); cam.snap = true; game.focus = null;
   await ui.fade(false, 1800, true);
   await N(picks[4] === 0 ? '«El héroe borra al Narrador.» Página 47. Aquí la tengo.' : '«El héroe perdona al Narrador.» Página 47. Aquí la tengo.');

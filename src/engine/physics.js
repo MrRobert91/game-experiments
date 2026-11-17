@@ -13,6 +13,7 @@ export const GROUPS = {
   prop: groups(G.PROP),
   boss: groups(G.BOSS, ALL & ~G.BOSS),
   debris: groups(G.DEBRIS, G.WORLD | G.PROP | G.DEBRIS),
+  fall: groups(G.DEBRIS, G.WORLD), // big falling set pieces: only hit the static world, never each other
 };
 
 export const STEP = 1 / 60;

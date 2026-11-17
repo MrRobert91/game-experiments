@@ -80,7 +80,7 @@ export class Gfx {
     const qp = new URLSearchParams(location.search).get('q');
     const mobile = matchMedia('(hover: none) and (pointer: coarse)').matches;
     this.low = qp ? qp === 'low' : mobile;
-    this.maxPR = this.low ? 1.35 : 1.75;
+    this.maxPR = this.low ? 1.25 : 1.75;
     this.pr = Math.min(devicePixelRatio || 1, this.maxPR);
 
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -114,8 +114,18 @@ export class Gfx {
     const rim = this.rim = new THREE.DirectionalLight(0x5aa0ff, 0.9);
     rim.position.set(-30, 20, -40);
     this.scene.add(rim);
+    // Fixed pool of local lights. The number of lights is baked into every shader, so adding,
+    // removing or hiding one mid-game recompiles all materials (a long freeze on phones).
+    // Scenes borrow these with point()/spot() instead of creating their own.
+    this.points = Array.from({ length: this.low ? 4 : 6 }, () => { const l = new THREE.PointLight(0xffffff, 0, 10, 2); this.scene.add(l); return l; });
+    this.spots = [0, 1].map((i) => {
+      const l = new THREE.SpotLight(0xffffff, 0, 30, 0.5, 0.5, 1.5);
+      if (i === 0 && !this.low) { l.castShadow = true; l.shadow.mapSize.set(1024, 1024); l.shadow.bias = -0.0005; l.shadow.camera.near = 1; l.shadow.camera.far = 40; }
+      this.scene.add(l, l.target); return l;
+    });
 
     // post
+    this._upN = 0;
     const size = r.getDrawingBufferSize(new THREE.Vector2());
     const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: this.low ? 0 : 4 });
     const c = this.composer = new EffectComposer(r, rt);
@@ -127,7 +137,7 @@ export class Gfx {
     c.addPass(this.fx);
     this.u = this.fx.uniforms;
 
-    this.sky = makeSky();
+    this.sky = makeSky(this.low);
     this.scene.add(this.sky);
 
     this.particles = new Particles(this.low ? 900 : 1800);
@@ -154,11 +164,24 @@ export class Gfx {
     this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(this.pr);
     this.composer.setSize(w, h);
+    if (this.low) this.bloom.setSize(w * this.pr * 0.5, h * this.pr * 0.5); // quarter-res bloom on phones
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.u.uRes.value.set(w * this.pr, h * this.pr);
   }
 
+  /** borrow pool light i: reconfigure it and hang it under `parent` (which must stay visible) */
+  point(i, { color = 0xffffff, intensity = 0, distance = 10, decay = 2, parent = this.scene, pos = [0, 0, 0] } = {}) {
+    const l = this.points[Math.min(i, this.points.length - 1)];
+    l.color.set(color); l.intensity = intensity; l.distance = distance; l.decay = decay; parent.add(l); l.position.set(...pos);
+    return l;
+  }
+  spot(i, { color = 0xffffff, intensity = 0, distance = 30, angle = 0.5, penumbra = 0.5, decay = 1.5, parent = this.scene, pos = [0, 0, 0], target = [0, -1, 0] } = {}) {
+    const l = this.spots[i];
+    l.color.set(color); l.intensity = intensity; l.distance = distance; l.angle = angle; l.penumbra = penumbra; l.decay = decay;
+    parent.add(l, l.target); l.position.set(...pos); l.target.position.set(...target);
+    return l;
+  }
   shake(t) { this.cam.trauma = Math.min(1, this.cam.trauma + t); }
 
   update(dt, rawDt) {
@@ -200,10 +223,11 @@ export class Gfx {
 
     // dynamic resolution: back off if the device struggles
     this._ft += (rawDt * 1000 - this._ft) * 0.05;
-    if (++this._ftN > 150) {
+    if (++this._ftN > 50) {
       this._ftN = 0;
-      if (this._ft > 26 && this.pr > 0.7) { this.pr = Math.max(0.7, this.pr - 0.2); this.resize(); }
-      else if (this._ft < 14 && this.pr < Math.min(devicePixelRatio, this.maxPR) - 0.05) { this.pr = Math.min(Math.min(devicePixelRatio, this.maxPR), this.pr + 0.1); this.resize(); }
+      const top = Math.min(devicePixelRatio || 1, this.maxPR);
+      if (this._ft > 21 && this.pr > 0.6) { this.pr = Math.max(0.6, this.pr - (this._ft > 30 ? 0.25 : 0.12)); this._upN = 0; this.resize(); }
+      else if (this._ft < 13 && this.pr < top - 0.05 && ++this._upN > 6) { this._upN = 0; this.pr = Math.min(top, this.pr + 0.1); this.resize(); } // only creep back up after a long calm spell
     }
   }
 
@@ -218,8 +242,9 @@ export class Gfx {
 const _v = new THREE.Vector3();
 
 // ---------- sky ----------
-function makeSky() {
+function makeSky(low) {
   const mat = new THREE.ShaderMaterial({
+    defines: { OCT: low ? 3 : 5 },
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: { uTime: { value: 0 }, uGlitch: { value: 0 }, uTop: { value: new THREE.Color(0x02030a) }, uMid: { value: new THREE.Color(0x0a1030) }, uLow: { value: new THREE.Color(0x1c0f2e) } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
@@ -229,14 +254,18 @@ function makeSky() {
       float noise(vec3 x){ vec3 i = floor(x), f = fract(x); f = f*f*(3.-2.*f);
         return mix(mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x), mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
                    mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x), mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z); }
-      float fbm(vec3 p){ float a = .5, s = 0.; for (int i = 0; i < 5; i++){ s += a * noise(p); p *= 2.03; a *= .5; } return s; }
+      float fbm(vec3 p){ float a = .5, s = 0.; for (int i = 0; i < OCT; i++){ s += a * noise(p); p *= 2.03; a *= .5; } return s; }
       void main(){
         vec3 d = normalize(vDir);
         float h = d.y;
         vec3 c = mix(uLow, uMid, smoothstep(-.6, .1, h));
         c = mix(c, uTop, smoothstep(.0, .8, h));
         float n = fbm(d * 2.4 + vec3(0., uTime * .008, 0.));
+        #if OCT > 3
         float n2 = fbm(d * 5. - vec3(uTime * .01));
+        #else
+        float n2 = n * .8;
+        #endif
         c += vec3(.22, .09, .42) * pow(n, 3.5) * .9 + vec3(.04, .22, .34) * pow(n2, 4.5) * .8;
         vec3 g = floor(d * 190.); float s = hash(g);
         float star = step(.9975, s) * (.5 + .5 * sin(uTime * (1. + s * 4.) + s * 50.));

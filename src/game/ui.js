@@ -5,7 +5,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 export class UI {
   constructor(game) {
     this.game = game;
-    this.auto = null; // 'A' | 'B' → test autopilot
+    this.auto = null; // 'A' | 'B' → test autopilot picks the first / last option
+    this.fast = false; // autopilot also compresses every wait (smoke test); otherwise it plays at human pace
     this.el = { dialog: $('#dialog'), who: $('#dialog .who'), text: $('#dialog .text'), choices: $('#choices'), note: $('#note'), hud: $('#hud'), sub: $('#subtitle'),
       chapter: $('#chapter'), fade: $('#fade'), touch: $('#touch'), fake: $('#fake'), reveal: $('#reveal'), obj: $('#objective-text'), awFill: $('#awareness-fill'), awNum: $('#awareness-num') };
     this.toastQ = []; this.toastBusy = false; this.achieved = new Set(); this.skips = 0; this.names = { ...NAMES };
@@ -16,8 +17,9 @@ export class UI {
       this._advance();
     });
   }
-  get speed() { return this.auto ? 0 : 1; }
-  wait(ms) { return wait(this.auto ? Math.min(ms, 60) : ms); }
+  wait(ms) { return wait(this.fast ? Math.min(ms, 60) : ms); }
+  /** how long the autopilot "thinks" before answering a prompt */
+  botDelay(ms) { return wait(this.fast ? 40 : ms); }
 
   _block(on) {
     this.blocking += on ? 1 : -1;
@@ -34,7 +36,7 @@ export class UI {
     dialog.className = `sp-${speaker}` + (shake ? ' shake' : '');
     who.textContent = this.names[speaker]; tx.textContent = '';
     this.game.onSpeak && this.game.onSpeak(speaker);
-    if (this.auto) { tx.textContent = text; await wait(25); }
+    if (this.fast) { tx.textContent = text; await wait(25); }
     else {
       let i = 0, skip = false;
       this.game.input.advance();
@@ -50,7 +52,7 @@ export class UI {
               if (!skip && '.,!?…:'.includes(ch) && i < text.length) { tx.textContent = text.slice(0, i); this._t = setTimeout(tick, ch === ',' ? 90 : 190); return; }
             }
             tx.textContent = text.slice(0, i);
-            if (i >= text.length) dialog.classList.add('done');
+            if (i >= text.length) { dialog.classList.add('done'); if (this.auto) setTimeout(res, 350); }
           }
           this._t = setTimeout(tick, i < text.length ? 22 : 50);
         };
@@ -75,9 +77,9 @@ export class UI {
     el.className = `sp-${b.speaker}`; el.firstElementChild.textContent = this.names[b.speaker]; el.lastElementChild.textContent = b.text;
     this.game.onSpeak && this.game.onSpeak(b.speaker);
     for (let i = 0; i < 5; i++) setTimeout(() => this.game.audio.blip(b.speaker), i * 60);
-    await wait(this.auto ? 300 : b.dur);
+    await wait(this.fast ? 300 : b.dur);
     el.classList.add('hidden');
-    await wait(this.auto ? 30 : 250);
+    await wait(this.fast ? 30 : 250);
     this._nextBark();
   }
   clearBarks() { this.barkQ.length = 0; }
@@ -85,14 +87,14 @@ export class UI {
 
   async choose(prompt, a, b) {
     const el = this.el.choices, cards = [...el.querySelectorAll('.card')];
-    this._block(true);
+    this._block(true); this.modal(true);
     el.querySelector('.prompt').textContent = prompt;
     cards[0].lastElementChild.textContent = a; cards[1].lastElementChild.textContent = b;
     cards.forEach((c) => (c.className = 'card'));
     el.classList.remove('hidden');
     this.game.audio.chime();
     let pick;
-    if (this.auto) { await wait(40); pick = this.auto === 'B' ? 1 : 0; }
+    if (this.auto) { await this.botDelay(900); pick = this.auto === 'B' ? 1 : 0; }
     else pick = await new Promise((res) => {
       const done = (i) => { removeEventListener('keydown', key); cards.forEach((c) => (c.onclick = null)); res(i); };
       const key = (e) => { if (e.code === 'Digit1' || e.code === 'Numpad1') done(0); if (e.code === 'Digit2' || e.code === 'Numpad2') done(1); };
@@ -101,7 +103,7 @@ export class UI {
     this.game.audio.choice();
     cards[pick].classList.add('picked'); cards[1 - pick].classList.add('dropped');
     await this.wait(900);
-    el.classList.add('hidden');
+    el.classList.add('hidden'); this.modal(false);
     this._block(false);
     this.game.input.advance(); this.game.input.action();
     return pick;
@@ -109,18 +111,18 @@ export class UI {
 
   async note(html, button = 'Seguir') {
     const el = this.el.note;
-    this._block(true);
+    this._block(true); this.modal(true);
     el.querySelector('.body').innerHTML = html;
     const btn = el.querySelector('.btn'); btn.textContent = button;
     el.classList.remove('hidden'); el.querySelector('article').scrollTop = 0;
-    if (this.auto) await wait(40);
+    if (this.auto) await this.botDelay(1200);
     else await new Promise((res) => {
       const done = () => { removeEventListener('keydown', key); btn.onclick = null; res(); };
       const key = (e) => { if (e.code === 'Enter' || e.code === 'Space') done(); };
       setTimeout(() => { btn.onclick = done; addEventListener('keydown', key); }, 600);
     });
     this.game.audio.ui();
-    el.classList.add('hidden');
+    el.classList.add('hidden'); this.modal(false);
     this._block(false);
     this.game.input.advance(); this.game.input.action();
   }
@@ -129,11 +131,11 @@ export class UI {
   pop(x, y, text, color, big) {
     const el = document.createElement('span');
     el.className = 'pop' + (big ? ' big' : ''); el.textContent = text; el.style.color = color;
-    el.style.left = Math.max(40, Math.min(innerWidth - 40, x)) + 'px'; el.style.top = Math.max(60, y) + 'px';
+    el.style.left = Math.max(40, Math.min(innerWidth - 40, x)) + 'px'; el.style.top = Math.max(120, Math.min(innerHeight - 150, y)) + 'px';
     document.getElementById('pops').appendChild(el);
     setTimeout(() => el.remove(), big ? 1300 : 900);
   }
-  score(n) { const b = document.querySelector('#score b'); document.getElementById('score').classList.remove('hidden'); b.textContent = n.toLocaleString('es-ES'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+  score(n) { const b = document.querySelector('#score b'); b.textContent = n.toLocaleString('es-ES'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
   /** absurd achievement toast; each id only once */
   achieve(id, title, desc = '') {
     if (this.achieved.has(id)) return;
@@ -146,16 +148,16 @@ export class UI {
     const el = document.getElementById('toast');
     el.querySelector('b').textContent = t[0]; el.querySelector('span').textContent = t[1];
     el.classList.remove('hidden'); this.game.audio.trophy();
-    await wait(this.auto ? 200 : 3000); el.classList.add('hidden'); await wait(this.auto ? 50 : 450);
+    await wait(this.fast ? 200 : 3000); el.classList.add('hidden'); await wait(this.fast ? 50 : 450);
     this._nextToast();
   }
   /** "press to feel": the meter fills whether you mash or not */
   async qte(text, button, selfLine) {
     const el = document.getElementById('qte'), fill = el.querySelector('i'), btn = el.querySelector('button');
-    this._block(true);
+    this._block(true); this.modal(true);
     el.querySelector('p').textContent = text; btn.textContent = button; fill.style.width = '0%'; el.classList.remove('hidden');
     let v = 0, presses = 0, idle = 0;
-    if (this.auto) await wait(60);
+    if (this.fast) await wait(60);
     else await new Promise((res) => {
       const hit = () => { v += 9; presses++; idle = 0; this.game.audio.blip('pelusa'); this.game.gfx.shake(0.08); };
       btn.onclick = hit;
@@ -167,7 +169,7 @@ export class UI {
         if (v >= 100) { clearInterval(iv); removeEventListener('keydown', key); btn.onclick = null; res(); }
       }, 100);
     });
-    el.classList.add('hidden'); this._block(false); this.game.input.advance(); this.game.input.action();
+    el.classList.add('hidden'); this.modal(false); this._block(false); this.game.input.advance(); this.game.input.action();
     return presses;
   }
   /** retro battle menu: returns index of chosen option */
@@ -179,14 +181,14 @@ export class UI {
     this._block(true);
     menu.innerHTML = options.map((o, i) => `<button data-i="${i}" class="${options.length === 1 ? 'wide' : ''}">${o}</button>`).join('');
     let pick = 0;
-    if (this.auto) { await wait(40); pick = this.auto === 'B' ? options.length - 1 : 0; }
+    if (this.auto) { await this.botDelay(700); pick = this.auto === 'B' ? options.length - 1 : 0; }
     else pick = await new Promise((res) => menu.querySelectorAll('button').forEach((b) => (b.onclick = () => res(+b.dataset.i))));
     menu.innerHTML = ''; this.game.audio.ui(); this._block(false); this.game.input.advance(); this.game.input.action();
     return pick;
   }
   async rpgLog(text) {
     const lg = document.querySelector('#rpg .log');
-    if (this.auto) { lg.textContent = text; await wait(20); return; }
+    if (this.fast) { lg.textContent = text; await wait(20); return; }
     for (let i = 1; i <= text.length; i++) { lg.textContent = text.slice(0, i); if (i % 3 === 0) this.game.audio.blip('sistema'); await wait(16); }
     await wait(900);
   }
@@ -195,18 +197,20 @@ export class UI {
     const el = this.el.fake;
     el.className = 'dark';
     el.innerHTML = `<div class="win"><header>Tienda de la trama</header><div class="c"><i style="background:#f2a52e">€</i><div><b>Final verdadero (DLC)</b><br/>Desbloquea el final que el Narrador no quiere que veas. Incluye un sombrero. <b>4,99 €</b></div></div><footer><button>No, gracias</button><button>Comprar</button></footer></div>`;
-    this._block(true); this.game.audio.chime();
+    this._block(true); this.modal(true); this.game.audio.chime();
     let pick = 0;
-    if (this.auto) await wait(40);
+    if (this.auto) await this.botDelay(900);
     else pick = await new Promise((res) => el.querySelectorAll('button').forEach((b, i) => (b.onclick = () => res(i))));
     el.querySelector('.c div').innerHTML = '<b>Compra realizada. ¡Gracias!</b><br/>Se han cargado 4,99 € de mentira en tu cuenta de mentira.';
     el.querySelector('footer').innerHTML = '';
     await this.wait(2200);
-    this._block(false); this.hideFake(); this.game.input.advance(); this.game.input.action();
+    this._block(false); this.modal(false); this.hideFake(); this.game.input.advance(); this.game.input.action();
     return pick;
   }
 
-  objective(html) { this.el.obj.innerHTML = html; this.el.hud.classList.toggle('hidden', !html); if (html) this.game.audio.beep(true); }
+  objective(html) { this.el.obj.innerHTML = html; document.getElementById('objective').classList.toggle('hidden', !html); if (html) { this.el.hud.classList.remove('hidden'); this.game.audio.beep(true); } }
+  /** full-screen overlays hide the top stack so nothing shows through them */
+  modal(on) { document.body.classList.toggle('modal', on); }
   awareness(pct) { this.aware = pct; this.el.awFill.style.width = pct + '%'; this.el.awNum.textContent = pct + '%'; }
   cine(on) { document.body.classList.toggle('cine', on); }
   glitch(on) { document.body.classList.toggle('glitch', on); }
@@ -221,7 +225,7 @@ export class UI {
   async fade(out, ms = 1200, white = false) {
     const f = this.el.fade;
     f.classList.toggle('white', white);
-    f.style.transitionDuration = (this.auto ? 50 : ms) + 'ms';
+    f.style.transitionDuration = (this.fast ? 50 : ms) + 'ms';
     f.classList.toggle('clear', !out);
     await this.wait(ms);
   }
@@ -237,12 +241,12 @@ export class UI {
     const el = this.el.fake;
     el.className = 'dark';
     el.innerHTML = `<div class="win"><header>trama.exe</header><div class="c"><i>!</i><div><b>trama.exe no responde</b><br/>El protagonista ha realizado una operación no prevista en el guion. ¿Qué quieres hacer?</div></div><footer><button>Esperar</button><button>Cerrar la trama</button></footer></div>`;
-    this._block(true);
+    this._block(true); this.modal(true);
     this.game.audio.alarm();
     let pick = 0;
-    if (this.auto) await wait(40);
+    if (this.auto) await this.botDelay(900);
     else pick = await new Promise((res) => el.querySelectorAll('button').forEach((b, i) => (b.onclick = () => res(i))));
-    this._block(false);
+    this._block(false); this.modal(false);
     this.hideFake();
     this.game.input.advance(); this.game.input.action();
     return pick;
@@ -251,7 +255,7 @@ export class UI {
   /** the magic trick: every pair of options collapses into the same card */
   async reveal(tricks, stats) {
     const el = this.el.reveal;
-    this._block(true);
+    this._block(true); this.modal(true);
     el.innerHTML = `<div class="wrap"><h3>Elige una carta. La que quieras.</h3><p class="sub">Esto es lo que elegiste. Y esto es lo que habría pasado si no.</p>
       ${tricks.map((t) => t.opts
         ? `<div class="trick multi"><div class="opts">${t.opts.map((o, i) => `<div class="opt ${t.pick === i ? 'you' : ''}"><small>${t.pick === i ? 'TÚ ELEGISTE' : ''}</small>${o}</div>`).join('')}</div><div class="same">${t.same}</div></div>`
@@ -262,17 +266,17 @@ export class UI {
     await this.wait(1400);
     for (const r of rows) { r.classList.add('show'); this.game.audio.ui(); await this.wait(300); }
     await this.wait(900);
-    for (const r of rows) { r.classList.add('flip'); this.game.audio.choice(); await this.wait(900); }
+    for (const r of rows) { r.classList.add('flip'); r.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); this.game.audio.choice(); await this.wait(900); }
     el.querySelector('.stats').classList.remove('hidden');
-    const btn = el.querySelector('.btn'); btn.classList.remove('hidden');
-    if (this.auto) await wait(60); else await new Promise((res) => (btn.onclick = res));
-    el.classList.add('hidden');
+    const btn = el.querySelector('.btn'); btn.classList.remove('hidden'); btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (this.auto) await this.botDelay(1500); else await new Promise((res) => (btn.onclick = res));
+    el.classList.add('hidden'); this.modal(false);
     this._block(false);
     this.game.input.advance(); this.game.input.action();
   }
 
   async ending(stats) {
-    const el = this.el.reveal;
+    const el = this.el.reveal; this.modal(true);
     el.innerHTML = `<div class="wrap"><p class="end">Fin<br/><em>(por el bien de la trama)</em></p><p class="sub">Gracias por jugar. No tenías elección.</p><div class="stats">${stats}</div>
       <div class="row"><button class="btn big">Volver a empezar</button></div></div>`;
     el.classList.remove('hidden');

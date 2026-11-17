@@ -68,7 +68,7 @@ export class Input {
     if (this.stick.id !== null) { x = this.stick.x; y = this.stick.y; }
     this.held = this.enabled && (this.btnDown || k.has('Space') || k.has('KeyE'));
     if (x || y || this._action || this.held) this.lastInput = performance.now();
-    if (this.bot) { const b = this.bot(); if (b) { x = b.x; y = b.y; if (b.action) this._action = true; } }
+    if (this.bot) { const b = this.bot(); if (b) { x = b.x; y = b.y; if (b.action) this._action = true; if (b.hold) this.held = true; } }
     const l = Math.hypot(x, y);
     if (l > 1) { x /= l; y /= l; }
     if (l < 0.12) { x = 0; y = 0; }
