@@ -10,7 +10,7 @@ export const MAT = {
 };
 export const shadowed = (o) => { o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); return o; };
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-const _q = new THREE.Quaternion(), _up = V(), _fw = V(), _ax = V(), _t = V();
+const _q = new THREE.Quaternion(), _up = V(), _fw = V(), _ax = V(), _t = V(), _eul = new THREE.Euler();
 const UP = V(0, 1, 0);
 
 const FACES = {
@@ -72,7 +72,10 @@ export class Robot {
     const tip = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8), this.tipMat); tip.position.set(0.12, 0.52, -0.05); head.add(tip);
     scene.add(shadowed(head)); face.castShadow = false;
     this.head = physics.add({ mesh: head, pos: [pos.x, pos.y + 1.52, pos.z], shapes: [{ kind: 'ball', size: [0.25] }], density: 0.5, group: GROUPS.robot, angDamp: 2, linDamp: 0.2, canSleep: false });
-    physics.joint(this.chassis, this.head, [0, 0.66, 0], [0, -0.24, 0]);
+    // a vertical hinge, not a ball joint: the head can turn to look at things but always stays on the neck,
+    // even when the body is tumbling. The floppiness is added on top, visually, by a spring in update().
+    physics.hinge(this.chassis, this.head, [0, 0.66, 0], [0, -0.24, 0], [0, 1, 0]);
+    this.nod = new THREE.Vector2(); this.nodV = new THREE.Vector2(); this.lastHV = V();
 
     // --- arms (pure ragdoll: they just hang and swing) ---
     this.hands = [];
@@ -169,6 +172,7 @@ export class Robot {
     this.dashCd -= dt;
     if (this.stun > 0) {
       this.stun -= dt;
+      this._turnHead(0); // just ride along with the body
       if (this.stun <= 0) { this.face('idle'); this.game.audio.beep(true); }
       this.lastV.set(v.x, v.y, v.z);
       return;
@@ -220,16 +224,20 @@ export class Robot {
     const av = b.angvel(), ka = 1 - Math.exp(-dt * 16);
     b.setAngvel({ x: av.x + (_ax.x - av.x) * ka, y: av.y + (_ax.y - av.y) * ka, z: av.z + (_ax.z - av.z) * ka }, true);
 
-    // head: floppy but tries to stay level and look where it is going (or at something)
+    // head: turns on its hinge to look where it is going (or at something)
     const hb = this.head.body, hr = hb.rotation(); _q.set(hr.x, hr.y, hr.z, hr.w);
-    _up.set(0, 1, 0).applyQuaternion(_q); _fw.set(0, 0, 1).applyQuaternion(_q);
-    _ax.crossVectors(_up, UP).multiplyScalar(11);
+    _fw.set(0, 0, 1).applyQuaternion(_q);
     let hy = this.yaw;
     if (this.lookAt) { const p = hb.translation(); hy = Math.atan2(this.lookAt.x - p.x, this.lookAt.z - p.z); }
     let dh = hy - Math.atan2(_fw.x, _fw.z); dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-    _ax.y += dh * 9;
-    const ha = hb.angvel(), kh = 1 - Math.exp(-dt * 9);
-    hb.setAngvel({ x: ha.x + (_ax.x - ha.x) * kh, y: ha.y + (_ax.y - ha.y) * kh, z: ha.z + (_ax.z - ha.z) * kh }, true);
+    this._turnHead(THREE.MathUtils.clamp(dh * 9, -12, 12));
+  }
+
+  /** head spin = body spin + a turn around the neck: never fights the hinge */
+  _turnHead(rate) {
+    const cb = this.chassis.body, r = cb.rotation(), av = cb.angvel();
+    _q.set(r.x, r.y, r.z, r.w); _up.set(0, 1, 0).applyQuaternion(_q);
+    this.head.body.setAngvel({ x: av.x + _up.x * rate, y: av.y + _up.y * rate, z: av.z + _up.z * rate }, true);
   }
 
   update(dt, time) {
@@ -240,6 +248,18 @@ export class Robot {
     const sq = THREE.MathUtils.clamp(this.sq, -0.4, 0.5), st = THREE.MathUtils.clamp(-this.st, -0.3, 0.6);
     this.chassis.mesh.scale.set(1 + sq * 0.5 - st * 0.35, 1 - sq - st * 0.25, 1 + sq * 0.5 + st);
     this.head.mesh.scale.setScalar(1 + sq * 0.25);
+    // bobble-head: a spring tips the head away from sudden changes of speed, pivoting on the neck
+    if (dt > 0) {
+      const v = this.chassis.body.linvel(), ax = (v.x - this.lastHV.x) / dt, az = (v.z - this.lastHV.z) / dt; this.lastHV.set(v.x, v.y, v.z);
+      const k = 140, c = 9, tx = THREE.MathUtils.clamp(-az * 0.012, -0.5, 0.5), tz = THREE.MathUtils.clamp(ax * 0.012, -0.5, 0.5);
+      this.nodV.x += ((tx - this.nod.x) * k - this.nodV.x * c) * dt; this.nodV.y += ((tz - this.nod.y) * k - this.nodV.y * c) * dt;
+      this.nod.addScaledVector(this.nodV, dt);
+      const hm = this.head.mesh;
+      _ax.set(0, -0.24, 0).applyQuaternion(hm.quaternion).add(hm.position); // neck, world space
+      _q.setFromEuler(_eul.set(this.nod.x, 0, this.nod.y));
+      _t.copy(hm.position).sub(_ax).applyQuaternion(_q); hm.position.copy(_ax).add(_t);
+      hm.quaternion.premultiply(_q);
+    }
     this.coreMat.emissive.setHex(this.charge >= 1 ? 0xffffff : 0x39d8ff);
     // wheel dust
     this.dustT -= dt;

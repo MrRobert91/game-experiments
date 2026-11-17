@@ -175,15 +175,18 @@ export class UI {
   /** retro battle menu: returns index of chosen option */
   async rpgMenu(log, options) {
     const el = document.getElementById('rpg'), lg = el.querySelector('.log'), menu = el.querySelector('.menu');
-    el.classList.remove('hidden'); menu.innerHTML = '';
+    // the buttons go in straight away but stay invisible while the log types, so the box never changes height under the player
+    if (options) { menu.innerHTML = options.map((o, i) => `<button data-i="${i}" class="${options.length === 1 ? 'wide' : ''}">${o}</button>`).join(''); menu.classList.add('pending'); }
+    else if (!menu.children.length) menu.innerHTML = '';
+    el.classList.remove('hidden');
     await this.rpgLog(log);
     if (!options) return -1;
     this._block(true);
-    menu.innerHTML = options.map((o, i) => `<button data-i="${i}" class="${options.length === 1 ? 'wide' : ''}">${o}</button>`).join('');
+    menu.classList.remove('pending');
     let pick = 0;
     if (this.auto) { await this.botDelay(700); pick = this.auto === 'B' ? options.length - 1 : 0; }
     else pick = await new Promise((res) => menu.querySelectorAll('button').forEach((b) => (b.onclick = () => res(+b.dataset.i))));
-    menu.innerHTML = ''; this.game.audio.ui(); this._block(false); this.game.input.advance(); this.game.input.action();
+    menu.classList.add('pending'); this.game.audio.ui(); this._block(false); this.game.input.advance(); this.game.input.action();
     return pick;
   }
   async rpgLog(text) {
@@ -192,7 +195,7 @@ export class UI {
     for (let i = 1; i <= text.length; i++) { lg.textContent = text.slice(0, i); if (i % 3 === 0) this.game.audio.blip('sistema'); await wait(16); }
     await wait(900);
   }
-  rpgHide() { document.getElementById('rpg').classList.add('hidden'); }
+  rpgHide() { const el = document.getElementById('rpg'); el.classList.add('hidden'); el.querySelector('.menu').innerHTML = ''; }
   async shop() {
     const el = this.el.fake;
     el.className = 'dark';
@@ -232,11 +235,11 @@ export class UI {
 
   async fakeCredits() {
     const el = this.el.fake;
-    el.className = 'dark';
+    el.className = 'dark'; document.body.classList.add('credits'); // the cast keeps talking over the credits
     el.innerHTML = `<div class="credits"><h3>Fin</h3><p><small>ESCRITO Y DIRIGIDO POR</small>El Narrador</p><p><small>PROTAGONIZADO POR</small>El Narrador (voz)</p><p><small>PIANOS</small>Cuarenta, amortizados</p><p><small>CON LA COLABORACIÓN DE</small>un robot de limpieza</p><p><small>NINGÚN HILO FUE DAÑADO</small>en la realización de este final</p></div>`;
     await this.wait(4200);
   }
-  hideFake() { this.el.fake.className = 'hidden'; this.el.fake.innerHTML = ''; }
+  hideFake() { this.el.fake.className = 'hidden'; this.el.fake.innerHTML = ''; document.body.classList.remove('credits'); }
   async fakeCrash() {
     const el = this.el.fake;
     el.className = 'dark';

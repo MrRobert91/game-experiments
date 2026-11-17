@@ -115,7 +115,9 @@ class Game {
       requestAnimationFrame(frame);
       const gap = now - last, pf = this.perf;
       pf.frames++; if (gap > pf.worst) pf.worst = gap; if (gap > 120) pf.long++;
-      const raw = Math.min(0.05, gap / 1000); last = now;
+      // never negative: after a long task (the shader warm-up) the first rAF timestamp can be seconds older than `last`,
+      // and a negative step makes flash and camera shake grow instead of decay
+      const raw = Math.min(0.05, Math.max(0, gap / 1000)); last = Math.max(last, now);
       const c0 = performance.now();
       try { step(raw); } catch (e) { if (!this.crashed) { this.crashed = e; console.error('frame error', e); } }
       const cpu = performance.now() - c0; pf.cpu = (pf.cpu || 0) + cpu; if (cpu > (pf.cpuWorst || 0)) pf.cpuWorst = cpu;

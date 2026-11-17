@@ -260,3 +260,16 @@ body.modal #top { opacity: 0; }
   #rpg .log { min-height: 3em; padding: 8px 12px; } #rpg .menu { padding: 6px 12px; } #rpg .menu button { padding: 5px 6px; }
 }
 #dialog, #rpg { max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); }
+
+/* during the fake credits the black curtain sits above the game, so lift the dialogue and subtitles above it too */
+body.credits #dialog { z-index: 13; }
+body.credits #top { z-index: 13; }
+body.credits #fake .credits { opacity: .55; transition: opacity .6s; }
+/* turn-based battle: in landscape the menu is a single row so the fighters stay visible above it */
+@media (orientation: landscape) and (max-height: 520px) {
+  #rpg .menu { grid-template-columns: repeat(4, 1fr); }
+  #rpg .log { min-height: calc(3em + 30px); } /* two full lines plus padding and border: the box never grows mid-battle */
+}
+#rpg .menu.pending button { visibility: hidden; pointer-events: none; }
+#rpg .log { min-height: calc(4.5em + 30px); } /* three lines (plus padding and border) in portrait, so the box keeps one height for the whole battle */
+@media (orientation: landscape) and (max-height: 520px) { #rpg .log { min-height: calc(3em + 30px); } }

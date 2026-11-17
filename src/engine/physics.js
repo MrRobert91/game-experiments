@@ -80,6 +80,12 @@ export class Physics {
     if (ent.mesh && ent.mesh.parent) ent.mesh.parent.remove(ent.mesh);
   }
 
+  /** hinge: b can only spin around `axis` (given in both bodies' local frames) relative to a */
+  hinge(a, b, anchorA, anchorB, axis = [0, 1, 0]) {
+    const v = (p) => ({ x: p[0], y: p[1], z: p[2] });
+    return this.world.createImpulseJoint(RAPIER.JointData.revolute(v(anchorA), v(anchorB), v(axis)), a.body, b.body, true);
+  }
+
   joint(a, b, anchorA, anchorB) {
     const jd = RAPIER.JointData.spherical({ x: anchorA[0], y: anchorA[1], z: anchorA[2] }, { x: anchorB[0], y: anchorB[1], z: anchorB[2] });
     return this.world.createImpulseJoint(jd, a.body, b.body, true);

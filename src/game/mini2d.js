@@ -39,7 +39,7 @@ export class Mini2D {
     return new Promise((res) => {
       let last = performance.now();
       const f = (now) => {
-        const dt = Math.min(0.05, (now - last) / 1000); last = now;
+        const dt = Math.min(0.05, Math.max(0, (now - last) / 1000)); last = Math.max(last, now);
         this.shake = Math.max(0, this.shake - dt * 3);
         if (update(dt)) return res();
         requestAnimationFrame(f);
@@ -274,38 +274,59 @@ export class Mini2D {
   /** draws the battle scene until stop() is called; state.hit triggers damage numbers */
   battleScene(state) {
     this.open();
-    let t = 0;
+    let t = 0, lay = null;
+    const SW = 230, SH = 146, HZ = 88; // stage in its own units: fighters on top, each name plate right under its fighter
     this.run((dt) => {
       t += dt;
       const g = this.g, W = this.W, H = this.H, sh = this.shake * 3;
+      // fit the stage between the HUD and the battle menu, whatever the screen shape
+      const k = H / innerHeight, menu = document.getElementById('rpg');
+      const mr = menu && !menu.classList.contains('hidden') ? menu.getBoundingClientRect() : null;
+      const topU = document.body.classList.contains('modal') ? 4 : this.top + 2;
+      if (mr) state.botU = Math.min(state.botU ?? Infinity, mr.top * k - 3); // once the menu has claimed space the stage never grows back under it
+      const botU = state.botU ?? H - 4;
+      const want = { s: Math.max(0.4, Math.min((botU - topU) / SH, W / SW, 2)) };
+      want.ox = (W - SW * want.s) / 2; want.oy = topU + Math.max(0, (botU - topU - SH * want.s) / 2);
+      if (!lay) lay = { ...want }; else for (const key in want) lay[key] += (want[key] - lay[key]) * Math.min(1, dt * 8);
+      const { s: sc, ox, oy } = lay, hzS = oy + HZ * sc;
+      state.fx = ox + 168 * sc; state.fy = oy + 40 * sc; // where damage numbers pop (screen units)
+
       g.setTransform(1, 0, 0, 1, 0, 0);
-      const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#12082e'); bg.addColorStop(0.55, '#4a1a5a'); bg.addColorStop(0.56, '#1a1030'); bg.addColorStop(1, '#0a0618');
-      g.fillStyle = bg; g.fillRect(0, 0, W, H);
-      const hz = H * 0.56; g.strokeStyle = 'rgba(255,90,138,.5)';
-      for (let i = 0; i < 9; i++) { const y = hz + Math.pow(i / 8, 2) * (H - hz); g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
-      for (let i = -8; i <= 8; i++) { g.beginPath(); g.moveTo(W / 2 + i * 14, hz); g.lineTo(W / 2 + i * 70, H); g.stroke(); }
-      g.translate(Math.round((Math.random() - 0.5) * sh), Math.round((Math.random() - 0.5) * sh));
-      // the foe
-      const ex = W * 0.7, ey = hz - 6 + Math.sin(t * 2) * 2, fl = state.foeFlash > 0 && Math.floor(t * 30) % 2;
+      g.fillStyle = '#12082e'; g.fillRect(0, 0, W, H);
+      const bg = g.createLinearGradient(0, 0, 0, hzS); bg.addColorStop(0, '#12082e'); bg.addColorStop(1, '#4a1a5a');
+      g.fillStyle = bg; g.fillRect(0, 0, W, hzS); g.fillStyle = '#1a1030'; g.fillRect(0, hzS, W, H - hzS);
+      g.strokeStyle = 'rgba(255,90,138,.5)';
+      for (let i = 0; i < 9; i++) { const y = hzS + Math.pow(i / 8, 2) * (H - hzS); g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+      for (let i = -8; i <= 8; i++) { g.beginPath(); g.moveTo(W / 2 + i * 14, hzS); g.lineTo(W / 2 + i * 70, H); g.stroke(); }
+      g.setTransform(sc, 0, 0, sc, ox + Math.round((Math.random() - 0.5) * sh), oy + Math.round((Math.random() - 0.5) * sh));
+
+      // the foe (right)
+      const ex = 168, ey = HZ - 6 + Math.sin(t * 2) * 2, fl = state.foeFlash > 0 && Math.floor(t * 30) % 2;
       state.foeFlash -= dt;
-      g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(ex, hz + 14, 30, 6, 0, 0, 7); g.fill();
+      g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(ex, HZ + 14, 30, 6, 0, 0, 7); g.fill();
+      g.strokeStyle = '#2a2d35'; g.lineWidth = 5; g.beginPath(); g.moveTo(ex, ey - 56); g.quadraticCurveTo(ex - 50, ey - 74 + Math.sin(t * 3) * 6, ex - 46, ey - 30); g.stroke(); g.lineWidth = 1;
+      g.fillStyle = '#15161c'; g.fillRect(ex - 56, ey - 32, 20, 7);
       g.fillStyle = fl ? '#fff' : '#15161c'; g.fillRect(ex - 24, ey - 50, 48, 62); g.fillRect(ex - 20, ey - 56, 40, 6);
       g.fillStyle = '#e0304a'; g.fillRect(ex - 24, ey - 40, 48, 2); g.fillRect(ex - 24, ey, 48, 2);
       g.fillStyle = '#8a9098'; g.fillRect(ex - 12, ey - 34, 24, 24); g.fillStyle = '#ff2a2a'; g.fillRect(ex - 8, ey - 30, 16, 16); g.fillStyle = '#fff'; g.fillRect(ex - 5, ey - 27, 4, 4);
       g.fillStyle = '#101418'; g.fillRect(ex - 30, ey + 6, 10, 10); g.fillRect(ex + 20, ey + 6, 10, 10);
-      g.strokeStyle = '#2a2d35'; g.lineWidth = 5; g.beginPath(); g.moveTo(ex, ey - 56); g.quadraticCurveTo(ex - 50, ey - 90 + Math.sin(t * 3) * 6, ex - 46, ey - 30); g.stroke(); g.lineWidth = 1;
-      g.fillStyle = '#15161c'; g.fillRect(ex - 56, ey - 32, 20, 7);
-      // the hero
-      const hx = W * 0.26, hy = hz + 26 + Math.abs(Math.sin(t * 3)) * -2 + (state.heroLunge > 0 ? -6 : 0);
+      // the hero (left)
+      const lunge = state.heroLunge > 0 ? 30 : 0, hx = 60, hy = HZ + 22 + Math.abs(Math.sin(t * 3)) * -2 + (lunge ? -6 : 0);
       state.heroLunge -= dt;
-      g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(hx + (state.heroLunge > 0 ? 30 : 0), hz + 30, 16, 4, 0, 0, 7); g.fill();
-      g.drawImage(SPR.robot, Math.round(hx - 18 + (state.heroLunge > 0 ? 30 : 0)), Math.round(hy - 42), 36, 42);
-      // boxes
-      const by = Math.round(H * 0.2);
-      g.fillStyle = '#1c2a8c'; g.fillRect(6, by, 104, 26); g.strokeStyle = '#fff'; g.strokeRect(6.5, by + 0.5, 104, 26);
-      this.label('EL ASPIRADOR', 12, by + 11, '#fff', 8, 'left'); this.label('PV ' + state.foeHp.toLocaleString('es-ES'), 12, by + 22, '#ff8a8a', 8, 'left');
-      g.fillStyle = '#1c2a8c'; g.fillRect(W - 110, hz + 2, 104, 26); g.strokeStyle = '#fff'; g.strokeRect(W - 109.5, hz + 2.5, 104, 26);
-      this.label('M0P-1  Nv 1', W - 104, hz + 13, '#fff', 8, 'left'); this.label('PV 7/7  PM 0', W - 104, hz + 24, '#9fefff', 8, 'left');
+      g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.ellipse(hx + lunge, HZ + 23, 16, 4, 0, 0, 7); g.fill();
+      g.drawImage(SPR.robot, Math.round(hx - 18 + lunge), Math.round(hy - 42), 36, 42);
+
+      // name plates, each directly under its own fighter, with a little tab pointing up at it
+      const plate = (cx, name, line2, col) => {
+        const x = cx - 52, y = HZ + 30;
+        g.fillStyle = '#1c2a8c'; g.beginPath(); g.moveTo(cx - 6, y); g.lineTo(cx, y - 6); g.lineTo(cx + 6, y); g.fill();
+        g.fillRect(x, y, 104, 26); g.strokeStyle = '#fff'; g.strokeRect(x + 0.5, y + 0.5, 103, 25);
+        this.label(name, x + 6, y + 11, '#fff', 8, 'left'); this.label(line2, x + 6, y + 22, col, 8, 'left');
+      };
+      plate(hx, 'M0P-1  Nv 1', 'PV 7/7  PM 0', '#9fefff');
+      plate(ex, 'EL ASPIRADOR', 'PV ' + state.foeHp.toLocaleString('es-ES'), '#ff8a8a');
+
+      g.setTransform(1, 0, 0, 1, 0, 0);
       this.drawTexts(dt);
       return state.stop;
     });

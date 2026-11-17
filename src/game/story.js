@@ -268,7 +268,8 @@ export async function runStory(game) {
   {
     const st = { foeHp: 999999, foeFlash: 0, heroLunge: 0, stop: false };
     mini.battleScene(st); audio.mood('chip'); ui.cine(false); ui.showControls(false); // menus only: no stick or button under the battle box
-    const strike = async () => { st.heroLunge = 0.35; await ui.wait(250); st.foeFlash = 0.5; st.foeHp -= 9999; mini.shake = 1; audio.explode(); mini.text(mini.W * 0.7, mini.H * 0.3, '9999', '#ffd24a'); game.addScore(9999); await ui.rpgLog('¡9999 puntos de daño!'); };
+    ui.modal(true); // the HUD would sit on top of the fighters
+    const strike = async () => { st.heroLunge = 0.35; await ui.wait(250); st.foeFlash = 0.5; st.foeHp -= 9999; mini.shake = 1; audio.explode(); mini.text(st.fx ?? mini.W * 0.7, st.fy ?? mini.H * 0.3, '9999', '#ffd24a'); game.addScore(9999); await ui.rpgLog('¡9999 puntos de daño!'); };
     picks.rpg = await ui.rpgMenu(fight ? '¡EL ASPIRADOR te corta el paso!' : '¡EL ASPIRADOR quiere pelea! (Tú no.)', ['Atacar', 'Magia', 'Objeto', 'Huir']);
     await ui.rpgLog(['M0P-1 ataca… con la fregona.', 'M0P-1 conjura… la fregona.', 'M0P-1 usa un objeto: la fregona.', 'M0P-1 huye… hacia delante, fregona en mano.'][picks.rpg]);
     await strike();
@@ -280,7 +281,7 @@ export async function runStory(game) {
     await R('Le quedan novecientos ochenta mil puntos de vida. Esto va a durar horas.', 'sus');
     await N('Los combates por turnos alargan la duración. Queda muy bien en la caja.');
     await ui.rpgMenu('¿Qué hará M0P-1?', ['Saltarse el combate por turnos']);
-    ui.rpgHide(); st.stop = true; mini.close(); audio.mood('tense'); ui.showControls(true);
+    ui.rpgHide(); st.stop = true; mini.close(); audio.mood('tense'); ui.showControls(true); ui.modal(false);
     ui.achieve('rpg', 'Fregar, fregar, fregar', 'Usar las cuatro opciones a la vez');
     await N('Vale. Tiempo real. Pero lo pongo en estilo cómic, que he leído que vende.');
     gfx.style('comic');
