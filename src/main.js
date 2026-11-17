@@ -8,6 +8,9 @@ import { Robot } from './game/robot.js';
 import { buildWorld, ARENA_Y } from './game/world.js';
 import { spawnDebris, Pelusa, Boss, makePiano } from './game/actors.js';
 import { makeBarrels, makeLasers, makeStealth, makeWords, Pages } from './game/extras.js';
+import { installProgress, installEnemies, installWeapon, spawnEnemy, clearEnemies, makeStains } from './game/combat.js';
+import { buildWarehouse } from './game/levels.js';
+import { buildKartTrack } from './game/kart.js';
 import { runStory } from './game/story.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -27,6 +30,8 @@ class Game {
     this.world = buildWorld(this);
     this.robot = new Robot(this, V(0, 0, 2));
     this.robot.face('off'); this.robot.frozen = true;
+    installProgress(this); installEnemies(this); installWeapon(this);
+    this.levels = { warehouse: buildWarehouse(this, ARENA_Y), kart: buildKartTrack(this, ARENA_Y) }; // hidden until their scenes; the warm-up compiles them
     this.perf = { worst: 0, long: 0, frames: 0, phys: 0 };
     this._warmup();
 
@@ -63,13 +68,16 @@ class Game {
     const br = makeBarrels(this, [[16, 0]], far); br.stop(); bodies.push(...br.list);
     const ls = makeLasers(this, far, [0]), st = makeStealth(this, far), wd = makeWords(this, V(0, far, 0));
     const pg = new Pages(this); pg.add(0, far, 4, '');
+    for (const t of ['pelusa', 'calcetin', 'grapadora', 'extra']) spawnEnemy(this, t, 20, far, 0);
+    const st0 = makeStains(this, [[22, 0]], far);
+    this.onWarmup && this.onWarmup(far);
     spawnDebris(this, V(0, far, 8), 2, { emissive: 0.5 });
     const state = [];
     scene.traverse((o) => { state.push([o, o.visible, o.frustumCulled]); o.visible = true; o.frustumCulled = false; });
     gfx.cam.snap = true; gfx.update(0, 0); gfx.render();
     for (const [o, v, f] of state) { o.visible = v; o.frustumCulled = f; }
     gfx.point(99, { intensity: 0 }); // the boss borrowed the last pool light: take it back before deleting the boss
-    ls.dispose(); st.dispose(); wd.dispose(); pg.dispose();
+    ls.dispose(); st.dispose(); wd.dispose(); pg.dispose(); st0.dispose(); clearEnemies(this); this.prog.kills = 0;
     for (const e of bodies) physics.remove(e);
     for (const t of this.temp) physics.remove(t.e);
     this.temp.length = 0; this.pianos = 0; this.crates = this.crates.filter((c) => c.alive);
@@ -106,8 +114,9 @@ class Game {
     this.ui.pop((_v.x * 0.5 + 0.5) * innerWidth, (-_v.y * 0.5 + 0.5) * innerHeight, text, color, big);
   }
   addScore(n, pos) { this.score += n; this.ui.score(this.score); if (pos) this.pop(pos, '+' + n, '#f2c14e'); }
-  sleep(sec) { if (this.ui.fast) sec = Math.min(sec, 0.12); return new Promise((res) => { let t = 0; const f = (dt) => { t += dt; if (t >= sec) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
-  until(cond, timeout = 1e9) { return new Promise((res) => { let t = 0; const f = (dt) => { t += dt; if (cond() || t > timeout) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
+  // waits started before a defeat never resolve: the abandoned attempt simply stops (see game.trial)
+  sleep(sec) { if (this.ui.fast) sec = Math.min(sec, 0.12); const ep = this.epoch; return new Promise((res) => { let t = 0; const f = (dt) => { if (this.epoch !== ep) { this.tickers.delete(f); return; } t += dt; if (t >= sec) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
+  until(cond, timeout = 1e9) { const ep = this.epoch; return new Promise((res) => { let t = 0; const f = (dt) => { if (this.epoch !== ep) { this.tickers.delete(f); return; } t += dt; if (cond() || t > timeout) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
 
   start() {
     let last = performance.now();
@@ -115,7 +124,9 @@ class Game {
       requestAnimationFrame(frame);
       const gap = now - last, pf = this.perf;
       pf.frames++; if (gap > pf.worst) pf.worst = gap; if (gap > 120) pf.long++;
-      const raw = Math.min(0.05, gap / 1000); last = now;
+      // never negative: after a long task (the shader warm-up) the first rAF timestamp can be seconds older than `last`,
+      // and a negative step makes flash and camera shake grow instead of decay
+      const raw = Math.min(0.05, Math.max(0, gap / 1000)); last = Math.max(last, now);
       const c0 = performance.now();
       try { step(raw); } catch (e) { if (!this.crashed) { this.crashed = e; console.error('frame error', e); } }
       const cpu = performance.now() - c0; pf.cpu = (pf.cpu || 0) + cpu; if (cpu > (pf.cpuWorst || 0)) pf.cpuWorst = cpu;
@@ -147,6 +158,7 @@ class Game {
       // temporary bodies
       for (let i = this.temp.length - 1; i >= 0; i--) {
         const t = this.temp[i]; t.t -= dt;
+        if (!t.e.alive) { this.temp.splice(i, 1); continue; } // removed elsewhere: touching a freed Rapier body panics the whole physics world
         if (t.t <= 0 || t.e.body.translation().y < this.floorY - 60) {
           if (t.poof && t.e.alive) { const p = t.e.body.translation(); gfx.particles.burst(V(p.x, p.y, p.z), 30, { color: 0x35f0c8, speed: 5, life: 0.6, size: 0.25, gravity: 0 }); }
           this.physics.remove(t.e); this.temp.splice(i, 1);
@@ -169,6 +181,7 @@ class Game {
       const rp = robot.position;
       if (!this.falling && rp.y < this.floorY - 14) {
         robot.falls++;
+        if (this.danger) { robot.hp = Math.max(0, robot.hp - 1); this.prog.hud(); if (robot.hp <= 0) this.dead = true; } // falling off costs a heart
         robot.teleport(this.checkpoint.x, this.checkpoint.y + 1.5, this.checkpoint.z);
         gfx.cam.snap = true; gfx.glitchKick = 0.6; this.audio.glitch();
         this.onFall && this.onFall();
@@ -238,7 +251,8 @@ game.init().then(() => {
     import('./game/mini2d.js').then(async ({ Mini2D }) => {
       document.getElementById('title').classList.add('hidden'); game.audio.start(); game.ui.showControls(true);
       const m = new Mini2D(game); window.__mini = m;
-      console.log('mini result', await m[only]());
+      if (only === 'fight') { const { fightCritic } = await import('./game/fight2d.js'); console.log('mini result', await fightCritic(m)); }
+      else if (m[only]) console.log('mini result', await m[only]());
     });
   } else if (game.ui.auto) go();
 }).catch((e) => {

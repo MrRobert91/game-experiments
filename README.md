@@ -2,24 +2,34 @@
 
 Un juego narrativo en 3D que sabe que es un juego. Eres M0P-1, un robot de limpieza que empieza la partida leyendo una nota de su creador: está dentro de un juego, su trabajo es entretener a quien mira, y el Narrador hará lo que haga falta para que la historia funcione. Lo que haga falta incluye pianos.
 
-Dura entre quince y veinte minutos. Hay ocho decisiones. Conviene jugarlo dos veces: el juego se acuerda de ti.
+Dura unos cuarenta minutos. Hay once decisiones. Conviene jugarlo dos veces: el juego se acuerda de ti.
 
 ## Qué hay dentro
 
 El Narrador cambia de género cada vez que el robot se queja, así que la partida pasa por:
 
 - un tutorial de fregar y otro, que nadie pidió, de la **turbofregona** (mantén el botón y suelta)
-- un piano, un duelo con barra de "pulsa para sentir tristeza" y unos créditos falsos a los tres minutos
-- un **plataformas 2D** de 8 bits con sprites, porque se acabó el presupuesto 3D
-- un **combate por turnos** donde Atacar, Magia, Objeto y Huir hacen lo mismo
-- el combate de verdad, en **estilo cómic**, con barriles rojos que explotan en cadena
+- un piano, un "pulsa para sentir tristeza" y unos créditos falsos a los tres minutos
+- un **plataformas 2D** de 8 bits, largo, con plataformas móviles, muelles y tres corazones: si los pierdes, el nivel empieza de nuevo
+- un **combate por turnos** donde todas las órdenes hacen lo mismo, con Pelusa salvaje, subida de nivel, cambio de clase, un cono que se une al grupo y un parche del día uno
+- el combate contra El Aspirador en **estilo cómic**, con barriles rojos que explotan en cadena
 - un interludio de **sigilo en cine negro** con guardias de cartón
-- un puente sin terminar con láseres giratorios, lluvia de pianos y **pianos con patas**
+- el **Almacén de Atrezo**: un nivel grande para explorar, con tres nidos de pelusas, calcetines y grapadoras que barrer, 8 secretos, objetos con los que interactuar y el **Pulverizador 3000**, un arma que dispara sola
+- una **carrera de karts** a tres vueltas contra El Productor, con derrapes, turbos y cáscaras de plátano
+- un puente sin terminar con láseres, guantes de boxeo, una cinta transportadora que va al revés, bolos rodando y **pianos con patas**
 - un **matamarcianos** contra El Deadline
-- un jefe final que te tira adverbios, te invierte los controles, te vende un DLC y cuelga el juego de mentira
+- tres oleadas de extras que barrer en el escenario del Narrador
+- un **juego de lucha 2D con físicas** contra El Crítico: dos muñecos de trapo que se zurran
+- el jefe final en dos fases: primero cortar los hilos de la trama, luego un ojo gigante con barra de vida que lanza rayos, ondas, pianos, adverbios y extras
 - y el truco de cartas del final, con un giro más detrás
 
-Por el camino: 8 páginas del guion escondidas, unos 30 logros absurdos, puntos de trama que no sirven para nada y un Narrador que comenta si cambias de pestaña, si le quitas el sonido, si te saltas los diálogos o si juegas de madrugada.
+## Progresión
+
+M0P-1 tiene **corazones**. Los golpes quitan uno (salvo si estás embistiendo: la embestida esquiva). Si te quedas sin corazones, el Narrador repite la toma desde un poco antes; tras dos derrotas seguidas te regala corazones extra.
+
+Barrer enemigos y limpiar manchas da **experiencia**: cada nivel suma un corazón y acorta la recarga de la embestida. El HUD lleva la cuenta de las **manchas limpiadas**, y a las 10, 25 y 40 desbloqueas mejoras (turbofregona más rápida, un corazón más, pulverizador doble).
+
+Por el camino: 8 páginas del guion, 8 secretos en el almacén, unos 40 logros absurdos y un Narrador que comenta si cambias de pestaña, le quitas el sonido, te saltas los diálogos o juegas de madrugada.
 
 ## Jugar
 
@@ -54,7 +64,7 @@ Un stick y un botón.
 | Teclado | WASD o flechas | Espacio (mantener y soltar: turbofregona) | Espacio / Enter, teclas 1 y 2, o clic |
 | Móvil | arrastrar en cualquier parte de la pantalla | botón de la derecha (mantener y soltar: turbofregona) | tocar |
 
-El mismo botón salta en el plataformas y suelta la bomba de espuma en el matamarcianos. La embestida atraviesa los láseres y la turbofregona rompe cajas, barriles y pianos con patas.
+El mismo botón salta en el plataformas, suelta la bomba de espuma en el matamarcianos, derrapa en el kart (mantener al girar) y pega en la pelea 2D (tocar: puñetazo; mantener y soltar: fregonazo; stick arriba: saltar). La embestida atraviesa los láseres y la turbofregona rompe cajas, barriles y pianos con patas.
 
 Funciona en vertical y en horizontal. En móvil el juego baja solo la resolución si el dispositivo no llega.
 
@@ -73,7 +83,9 @@ Funciona en vertical y en horizontal. En móvil el juego baja solo la resolució
 src/
   engine/   gfx.js (render y postprocesado), physics.js, input.js, audio.js
   game/     robot.js, actors.js, world.js, ui.js, story.js (el guion entero),
-            mini2d.js (los juegos 2D), extras.js (coleccionables, gags, obstáculos)
+            mini2d.js (plataformas, matamarcianos, combate por turnos), fight2d.js (la pelea),
+            kart.js (la carrera), levels.js (almacén, oleadas, obstáculos, jefe final),
+            combat.js (vida, derrotas, experiencia, enemigos, arma), extras.js (gags y peligros)
   main.js   bucle principal
 ```
 
@@ -82,4 +94,4 @@ src/
 - `?q=low` o `?q=high` fuerza la calidad gráfica.
 - `?auto=A` o `?auto=B` juega solo, eligiendo siempre la primera o la última opción, con todas las esperas comprimidas. Sirve de prueba rápida de que la historia llega al final.
 - `?auto=A&real=1` hace lo mismo a ritmo humano: escribe los diálogos, carga la turbofregona de verdad y juega los minijuegos enteros. Es la prueba que detecta bloqueos.
-- `?mini=platformer` o `?mini=shmup` abre directamente un minijuego 2D.
+- `?mini=platformer`, `?mini=shmup` o `?mini=fight` abre directamente un minijuego 2D.

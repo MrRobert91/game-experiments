@@ -87,7 +87,8 @@ export function makeBarrels(game, spots, y, onBoom) {
     spawnDebris(game, p, 8, { color: 0xd0202a, size: 0.2, speed: 9 });
     game.pop(p.clone().setY(p.y + 1), '¡BUM!', '#ff8030', true);
     const rp = game.robot.position, d = dist(rp, p.x, p.z);
-    if (d < 4.2) { const k = 9 / Math.max(1, d); game.robot.knock(1.4, { x: (rp.x - p.x) * k, y: 9, z: (rp.z - p.z) * k }); game.robot.falls++; }
+    if (d < 4.2) { const k = 9 / Math.max(1, d); game.robot.hurt(1, { x: (rp.x - p.x) * k, y: 9, z: (rp.z - p.z) * k }, 1.4); }
+    for (const e of [...game.enemies]) if (dist(e.pos, p.x, p.z) < 4.5) e.hit(5, p); // barrels sweep enemies too
     onBoom && onBoom(p);
     setTimeout(() => list.forEach((o) => { if (o.alive && dist(o.body.translation(), p.x, p.z) < 3.4) boom(o); }), 180); // chain reaction
   };
@@ -158,7 +159,7 @@ export function makeLasers(game, y, zs) {
       l.a += dt * 1.5 * l.dir; l.g.rotation.y = -l.a;
       const dx = rp.x, dz = rp.z - l.z, rr = Math.hypot(dx, dz);
       if (rr < 2.8 && rr > 0.25 && r.stun <= 0 && r.dashT <= 0 && rp.y < y + 0.7 && Math.abs(dx * Math.sin(l.a) - dz * Math.cos(l.a)) < 0.42) {
-        r.knock(1, { x: -Math.sin(l.a) * 6 * l.dir, y: 7, z: Math.cos(l.a) * 6 * l.dir }); r.falls++;
+        r.hurt(1, { x: -Math.sin(l.a) * 6 * l.dir, y: 7, z: Math.cos(l.a) * 6 * l.dir }, 1);
         game.audio.laser(); game.gfx.shake(0.4); game.hitstop(0.06); game.pop(rp.clone().setY(rp.y + 1.5), '¡ZAS!', '#ff4050');
       }
     }
@@ -212,8 +213,8 @@ export function makeWords(game, origin) {
     }
     for (let i = live.length - 1; i >= 0; i--) {
       const o = live[i]; o.life -= dt; o.mesh.position.addScaledVector(o.d, 7.5 * dt); o.mesh.position.y = origin.y + 0.7 + Math.sin(o.life * 6) * 0.12;
-      const hit = r.stun <= 0 && Math.abs(rp.y - origin.y) < 1.2 && dist(rp, o.mesh.position.x, o.mesh.position.z) < 1.25;
-      if (hit) { r.knock(1, { x: o.d.x * 6, y: 7, z: o.d.z * 6 }); r.falls++; game.gfx.shake(0.4); game.hitstop(0.07); game.pop(rp.clone().setY(rp.y + 1.6), '¡' + o.w + '!', '#ffd24a'); game.audio.thud(1); }
+      const hit = r.stun <= 0 && Math.abs(rp.y - origin.y) < 1.2 && dist(rp, o.mesh.position.x, o.mesh.position.z) < 1.25 && r.hurt(1, { x: o.d.x * 6, y: 7, z: o.d.z * 6 }, 1);
+      if (hit) { game.gfx.shake(0.4); game.hitstop(0.07); game.pop(rp.clone().setY(rp.y + 1.6), '¡' + o.w + '!', '#ffd24a'); game.audio.thud(1); }
       if (hit || o.life <= 0) { o.mesh.visible = false; live.splice(i, 1); }
     }
   };

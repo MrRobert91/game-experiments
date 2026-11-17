@@ -219,9 +219,10 @@ export class Boss {
       this.game.gfx.particles.burst(V(p.x, p.y - 0.8, p.z), 3, { color: 0xff5030, speed: 2, life: 0.5, size: 0.3, gravity: 1 });
       if (!this.hitDone && dist < 1.9 && player.stun <= 0) {
         this.hitDone = true;
-        player.knock(1.8, { x: this.dir.x * 7 + dx * 1.5, y: 8, z: this.dir.z * 7 + dz * 1.5 });
-        this.game.audio.thud(1.3); this.game.gfx.shake(0.6);
-        this.onHitPlayer && this.onHitPlayer();
+        if (player.hurt(1, { x: this.dir.x * 7 + dx * 1.5, y: 8, z: this.dir.z * 7 + dz * 1.5 }, 1.8)) {
+          this.game.audio.thud(1.3); this.game.gfx.shake(0.6);
+          this.onHitPlayer && this.onHitPlayer();
+        }
       }
       const sp = Math.hypot(v.x, v.z);
       if (this.t > 0.45 && sp < 6) {

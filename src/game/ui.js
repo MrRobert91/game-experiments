@@ -1,5 +1,5 @@
 const $ = (s) => document.querySelector(s);
-const NAMES = { narrador: 'NARRADOR', robot: 'M0P-1', pelusa: 'PELUSA', villano: 'EL ASPIRADOR', creador: 'EL CREADOR', sistema: 'SISTEMA' };
+const NAMES = { narrador: 'NARRADOR', robot: 'M0P-1', pelusa: 'PELUSA', villano: 'EL ASPIRADOR', creador: 'EL CREADOR', sistema: 'SISTEMA', productor: 'EL PRODUCTOR', critico: 'EL CRÍTICO' };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class UI {
@@ -175,15 +175,18 @@ export class UI {
   /** retro battle menu: returns index of chosen option */
   async rpgMenu(log, options) {
     const el = document.getElementById('rpg'), lg = el.querySelector('.log'), menu = el.querySelector('.menu');
-    el.classList.remove('hidden'); menu.innerHTML = '';
+    // the buttons go in straight away but stay invisible while the log types, so the box never changes height under the player
+    if (options) { menu.innerHTML = options.map((o, i) => `<button data-i="${i}" class="${options.length === 1 ? 'wide' : ''}">${o}</button>`).join(''); menu.classList.add('pending'); }
+    else if (!menu.children.length) menu.innerHTML = '';
+    el.classList.remove('hidden');
     await this.rpgLog(log);
     if (!options) return -1;
     this._block(true);
-    menu.innerHTML = options.map((o, i) => `<button data-i="${i}" class="${options.length === 1 ? 'wide' : ''}">${o}</button>`).join('');
+    menu.classList.remove('pending');
     let pick = 0;
     if (this.auto) { await this.botDelay(700); pick = this.auto === 'B' ? options.length - 1 : 0; }
     else pick = await new Promise((res) => menu.querySelectorAll('button').forEach((b) => (b.onclick = () => res(+b.dataset.i))));
-    menu.innerHTML = ''; this.game.audio.ui(); this._block(false); this.game.input.advance(); this.game.input.action();
+    menu.classList.add('pending'); this.game.audio.ui(); this._block(false); this.game.input.advance(); this.game.input.action();
     return pick;
   }
   async rpgLog(text) {
@@ -192,7 +195,7 @@ export class UI {
     for (let i = 1; i <= text.length; i++) { lg.textContent = text.slice(0, i); if (i % 3 === 0) this.game.audio.blip('sistema'); await wait(16); }
     await wait(900);
   }
-  rpgHide() { document.getElementById('rpg').classList.add('hidden'); }
+  rpgHide() { const el = document.getElementById('rpg'); el.classList.add('hidden'); el.querySelector('.menu').innerHTML = ''; }
   async shop() {
     const el = this.el.fake;
     el.className = 'dark';
@@ -211,6 +214,18 @@ export class UI {
   objective(html) { this.el.obj.innerHTML = html; document.getElementById('objective').classList.toggle('hidden', !html); if (html) { this.el.hud.classList.remove('hidden'); this.game.audio.beep(true); } }
   /** full-screen overlays hide the top stack so nothing shows through them */
   modal(on) { document.body.classList.toggle('modal', on); }
+  status(hp, max, lvl, stains) {
+    const h = document.getElementById('hearts'); let s = '';
+    for (let i = 0; i < max; i++) s += `<i class="${i < hp ? 'on' : ''}">♥</i>`;
+    if (h.innerHTML !== s) { h.innerHTML = s; h.classList.remove('bump'); void h.offsetWidth; h.classList.add('bump'); }
+    document.getElementById('lvl').textContent = `NV ${lvl} · ${stains} ${stains === 1 ? 'MANCHA' : 'MANCHAS'}`;
+  }
+  /** boss health bar in the top column; frac null hides it */
+  bossBar(name, frac) {
+    const el = document.getElementById('bossbar');
+    if (frac == null) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden'); el.querySelector('b').textContent = name; el.querySelector('i').style.width = Math.max(0, frac) * 100 + '%';
+  }
   awareness(pct) { this.aware = pct; this.el.awFill.style.width = pct + '%'; this.el.awNum.textContent = pct + '%'; }
   cine(on) { document.body.classList.toggle('cine', on); }
   glitch(on) { document.body.classList.toggle('glitch', on); }
@@ -232,11 +247,11 @@ export class UI {
 
   async fakeCredits() {
     const el = this.el.fake;
-    el.className = 'dark';
+    el.className = 'dark'; document.body.classList.add('credits'); // the cast keeps talking over the credits
     el.innerHTML = `<div class="credits"><h3>Fin</h3><p><small>ESCRITO Y DIRIGIDO POR</small>El Narrador</p><p><small>PROTAGONIZADO POR</small>El Narrador (voz)</p><p><small>PIANOS</small>Cuarenta, amortizados</p><p><small>CON LA COLABORACIÓN DE</small>un robot de limpieza</p><p><small>NINGÚN HILO FUE DAÑADO</small>en la realización de este final</p></div>`;
     await this.wait(4200);
   }
-  hideFake() { this.el.fake.className = 'hidden'; this.el.fake.innerHTML = ''; }
+  hideFake() { this.el.fake.className = 'hidden'; this.el.fake.innerHTML = ''; document.body.classList.remove('credits'); }
   async fakeCrash() {
     const el = this.el.fake;
     el.className = 'dark';
