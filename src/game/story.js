@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { GROUPS } from '../engine/physics.js';
 import { ARENA_Y as A, STAGE_Z as SZ } from './world.js';
-import { Pelusa, Boss, makePiano, spawnDebris } from './actors.js';
+import { Pelusa, Boss, makePiano, spawnDebris, makeCrate } from './actors.js';
+import { Mini2D } from './mini2d.js';
+import { loadMem, saveMem, Pages, installGags, makeBarrels, makeStealth, makeLasers, makeHoppers, makeWords } from './extras.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
@@ -12,6 +14,9 @@ export async function runStory(game) {
   const R = (t, face) => { if (face) robot.face(face); return ui.say('robot', t); };
   const P = (t) => ui.say('pelusa', t);
   const picks = [];
+  const mini = new Mini2D(game), pages = new Pages(game), mem = loadMem();
+  installGags(game);
+  if (mem.narrator) ui.names.narrador = 'NARRADOR (tú, la otra vez)';
   const aware = (n) => ui.awareness(n);
   const dist = (p, x, z) => Math.hypot(p.x - x, p.z - z);
 
@@ -32,10 +37,16 @@ export async function runStory(game) {
   audio.beep(true); robot.face('blink'); await game.sleep(0.5); robot.face('idle'); robot.frozen = false;
   ui.chapter('ACTO I', 'Un robot cualquiera');
   await game.sleep(2.8);
-  await N('Érase una vez un humilde robot de limpieza que no sospechaba nada.');
+  ui.achieve('note', 'Lector', 'Leer una nota. Entera, esperamos.');
+  if (mem.runs > 0) await N(`Anda. Tú otra vez. Partida número ${mem.runs + 1}. Finge sorpresa.`);
+  if (mem.narrator) await N('Érase una vez… un momento. Este texto lo escribiste tú la última vez. Qué flojo.');
+  else await N('Érase una vez un humilde robot de limpieza que no sospechaba nada.');
+  { const h = new Date().getHours(), m = String(new Date().getMinutes()).padStart(2, '0'); if (h < 6) await N(`Por cierto, son las ${h}:${m}. Deberías estar durmiendo. La trama no, la trama no duerme.`); }
   await R('Acabo de leer una nota que dice que estoy en un juego. Sospecho bastante.', 'sus');
   await N('…que no sospechaba CASI nada. Y que tenía tres manchas que limpiar.');
   robot.face('idle'); aware(4);
+  pages.add(5.2, 0, -2.8, 'Nota de diseño nº 1: «Que el jugador crea que elige.» Subrayado tres veces.');
+  pages.add(-5.6, 0, 5.4, 'Nota nº 2: «Pelusa cae bien en las pruebas. Matarla pronto.»');
   ui.cine(false); ui.showControls(true);
 
   // ───────────────────────── Tutorial: manchas ─────────────────────────
@@ -52,7 +63,7 @@ export async function runStory(game) {
     const p = robot.position;
     for (const s of W.stains) {
       if (!s.done && dist(p, s.x, s.z) < 1.0) {
-        s.done = true; cleaned++; audio.clean(); setObj(); stainLines[cleaned - 1]();
+        s.done = true; cleaned++; audio.clean(); setObj(); stainLines[cleaned - 1](); game.addScore(100, V(s.x, 1, s.z)); game.pop(V(s.x, 0.6, s.z), ['¡LIMPIO!', '¡RELUCE!', '¡IMPOLUTO!'][cleaned - 1], '#d58bff');
         gfx.particles.burst(V(s.x, 0.2, s.z), 40, { color: 0xd58bff, speed: 4, life: 1, size: 0.18, gravity: 2, up: 1 });
       }
       if (s.done && s.mesh.visible) { s.mesh.scale.multiplyScalar(Math.exp(-dt * 5)); s.mesh.material.opacity = s.mesh.scale.x; if (s.mesh.scale.x < 0.03) s.mesh.visible = false; }
@@ -63,6 +74,15 @@ export async function runStory(game) {
   await ui.barksDone(); await game.sleep(0.5);
   game.tickers.delete(stainTick); W.stains.forEach((s) => (s.mesh.visible = false));
   ui.objective(''); aware(9);
+  ui.achieve('tut', 'Limpieza emergente', 'Completar un tutorial de pasar por encima');
+  // a tutorial nobody asked for
+  await N('Y ahora, un tutorial que nadie ha pedido. Mantén pulsado el botón de embestir y suéltalo contra una caja.');
+  ui.objective('Mantén ⚡ y suelta: rompe una caja');
+  if (ui.auto) game.smashed++;
+  await game.until(() => game.smashed >= 1);
+  await ui.barksDone(); ui.objective('');
+  await R('¿Por qué sé hacer eso? Soy un friegasuelos.', 'sus');
+  await N('Las reseñas pedían «profundidad mecánica». Ahí la tienes. Se llama turbofregona.');
 
   // ───────────────────────── Pelusa ─────────────────────────
   ui.cine(true); game.botTarget = null;
@@ -106,6 +126,9 @@ export async function runStory(game) {
   pel.crush(); gfx.flash = 0.5; game.lampKick = 0.6;
   { const p = robot.position, d = V(p.x - spot.x, 0, p.z - spot.z); if (d.length() < 0.3) d.set(-1, 0, -0.4); d.normalize(); robot.knock(2.2, { x: d.x * 7, y: 8, z: d.z * 7 }); }
   await game.sleep(2.6);
+  ui.achieve('piano', 'Trauma desbloqueado', 'Ya tienes pasado doloroso');
+  const tears = await ui.qte('Pulsa para sentir tristeza', 'Llorar');
+  await N(tears > 0 ? `Qué bien has llorado. He contado ${tears} ${tears === 1 ? 'lágrima' : 'lágrimas'}. Suficiente.` : 'No has pulsado nada. He llorado yo por ti. Cuenta igual.');
   await N('¡Tragedia! Un piano, caído de la nada, se lleva a Pelusa.');
   await N('Ahora tienes un pasado doloroso. De nada.');
   robot.lookAt = null; game.focus = null;
@@ -114,10 +137,18 @@ export async function runStory(game) {
   await R('Es lo primero que se te ha ocurrido.');
   await N('Es lo SEGUNDO que se me ha ocurrido. Lo primero era un yunque.');
   aware(27);
+  await N('Y así M0P-1 aprendió que la amistad es efímera. Fin.');
+  ui.fakeCredits(); await ui.wait(3200);
+  await R('¿Ya? Han pasado tres minutos.', 'sus');
+  await N('Es una experiencia corta e intensa.');
+  await R('Es una demo.');
+  await N('…Vale, sigo. Pero que conste que el final era bueno.');
+  ui.hideFake(); ui.achieve('speed', 'Speedrun', 'Llegar a los créditos en tres minutos (falsos)');
 
   // ───────────────────────── Irse / quedarse ─────────────────────────
   await N('En fin. Roto por la pérdida, el héroe debía decidir: cruzar esa puerta hacia la aventura, o quedarse.');
   W.exitLight.intensity = 40;
+  if (mem.picks) await N(`La última vez elegiste ${mem.picks[1] === 0 ? 'irte' : 'quedarte'}. Prueba lo otro, anda. A ver qué pasa.`);
   picks[1] = await ui.choose('La puerta está ahí. Tú verás.', 'Irse', 'Quedarse');
   ui.cine(false);
   if (picks[1] === 0) {
@@ -170,7 +201,15 @@ export async function runStory(game) {
     if (i % 4 === 3) await game.sleep(0.05);
   }
   for (const p of W.props) p.body.wakeUp();
-  cam.stiff = 9;
+  cam.stiff = 9; ui.achieve('floor', 'Suelo opcional', 'Descubrir que el suelo era decorado');
+  await game.sleep(0.7);
+  // out of 3D budget: the fall is finished as an 8-bit platformer
+  game.timeScale = 0.03; gfx.style('retro'); audio.glitch(); gfx.glitchKick = 0.8;
+  ui.cine(false);
+  await N('Un momento. Esta caída sale carísima de renderizar.');
+  picks.door = await mini.platformer();
+  game.timeScale = 1; gfx.style('normal'); audio.glitch(); gfx.glitchKick = 0.8; ui.cine(true);
+  ui.bark('narrador', 'Ya ha llegado la subvención. Volvemos al 3D.');
   ui.chapter('ACTO II', 'El villano', 2400);
   await game.until(() => robot.position.y < A + 30, 6);
   W.closet.visible = false; W.lampLight.intensity = 0; W.exitLight.intensity = 0;
@@ -186,6 +225,10 @@ export async function runStory(game) {
   await game.sleep(1.2);
 
   // ───────────────────────── El Aspirador ─────────────────────────
+  pages.add(13, A, 1, 'Nota nº 3: «El villano necesita motivación.» Tachado. «El villano necesita ruedas.»');
+  pages.add(-12.5, A, 6, 'Nota nº 4: «Barriles rojos: sí. ¿Por qué? Porque sí.»');
+  pages.add(0, A, -13.5, 'Nota nº 5: «Si el robot se queja, cambiar de género. Repetir hasta que cuele.»');
+  [[-14, -3], [14.5, -4]].forEach(([x, z], i) => makeCrate(game, [x, A, z], 1.1, ['SECUELAS', 'PRECUELAS'][i]));
   ui.cine(true);
   await N('Y cayó, cayó y cayó, hasta la guarida de su peor enemigo.');
   await R('No tengo enemigos. Llevo existiendo cuatro minutos.', 'sus');
@@ -212,6 +255,27 @@ export async function runStory(game) {
     await R('No. No voy a pelearme con un electrodoméstico para que tú tengas tu escena.', 'angry');
     await N('El héroe se negó a luchar. Lástima que nadie avisara al Aspirador.');
   }
+  // first, the cheap version: a turn-based battle where every command is the same command
+  {
+    const st = { foeHp: 999999, foeFlash: 0, heroLunge: 0, stop: false };
+    mini.battleScene(st); audio.mood('chip'); ui.cine(false);
+    const strike = async () => { st.heroLunge = 0.35; await ui.wait(250); st.foeFlash = 0.5; st.foeHp -= 9999; mini.shake = 1; audio.explode(); mini.text(mini.W * 0.7, mini.H * 0.3, '9999', '#ffd24a'); game.addScore(9999); await ui.rpgLog('¡9999 puntos de daño!'); };
+    picks.rpg = await ui.rpgMenu(fight ? '¡EL ASPIRADOR te corta el paso!' : '¡EL ASPIRADOR quiere pelea! (Tú no.)', ['Atacar', 'Magia', 'Objeto', 'Huir']);
+    await ui.rpgLog(['M0P-1 ataca… con la fregona.', 'M0P-1 conjura… la fregona.', 'M0P-1 usa un objeto: la fregona.', 'M0P-1 huye… hacia delante, fregona en mano.'][picks.rpg]);
+    await strike();
+    await ui.rpgLog('EL ASPIRADOR usa SUCCIÓN.\nNo pasa nada: eres más grande que la boquilla.');
+    await ui.rpgMenu('¿Qué hará M0P-1?', ['Fregar', 'Fregar', 'Fregar', 'Fregar']);
+    await ui.rpgLog('M0P-1 usa FREGAR.'); await strike();
+    await ui.rpgLog('EL ASPIRADOR usa MONÓLOGO.\nM0P-1 pierde cuarenta segundos de vida.');
+    ui.rpgHide();
+    await R('Le quedan novecientos ochenta mil puntos de vida. Esto va a durar horas.', 'sus');
+    await N('Los combates por turnos alargan la duración. Queda muy bien en la caja.');
+    await ui.rpgMenu('¿Qué hará M0P-1?', ['Saltarse el combate por turnos']);
+    ui.rpgHide(); st.stop = true; mini.close(); audio.mood('tense');
+    ui.achieve('rpg', 'Fregar, fregar, fregar', 'Usar las cuatro opciones a la vez');
+    await N('Vale. Tiempo real. Pero lo pongo en estilo cómic, que he leído que vende.');
+    gfx.style('comic');
+  }
   ui.cine(false); robot.lookAt = null; robot.face('idle'); game.focus = null;
   let hits = 0;
   const fightObj = () => ui.objective(fight ? `Derrota al Aspirador (${hits}/3)` : hits === 0 ? 'No luches. Sobrevive.' : `<s>No luches.</s> <em>Deja que se estrelle solo (${hits}/3)</em>`);
@@ -222,7 +286,7 @@ export async function runStory(game) {
   ];
   const hurt = (p) => {
     if (boss.hp <= 0) return;
-    boss.damage(); hits++; fightObj(); audio.explode();
+    boss.damage(); hits++; fightObj(); audio.explode(); game.hitstop(0.12); game.addScore(500, p.clone().setY(A + 2.5)); game.pop(p.clone().setY(A + 3.2), ['¡CRASH!', '¡KA-POM!', '¡FIN!'][hits - 1] || '¡PAM!', '#ff5a8a', true);
     spawnDebris(game, p.clone().setY(A + 1.5), 10, { color: 0x5a5f6b, size: 0.3, speed: 6 });
     if (boss.hp > 0) crashLines[hits - 1] && crashLines[hits - 1]();
   };
@@ -246,15 +310,19 @@ export async function runStory(game) {
     const d = V(pl.x - bp.x, 0, pl.z - bp.z).normalize();
     return V(pl.x + d.x * 2.4, 0, pl.z + d.z * 2.4);
   };
+  const barrels = makeBarrels(game, [[-5, 2], [5.5, -3], [0, 12.5], [-12, -7], [11, 8]], A, (p) => { if (boss.hp > 0 && dist(boss.position, p.x, p.z) < 3.8) { boss.state = 'stun'; boss.t = 0; hurt(p); } });
+  ui.bark('narrador', 'He puesto barriles rojos. Explotan. Es la ley.');
   boss.state = 'idle'; boss.t = 0;
   await game.until(() => boss.hp <= 0);
+  barrels.stop();
   game.tickers.delete(ramTick); game.botTarget = null; ui.clearBarks();
   boss.state = 'stun'; boss.t = -99; ui.objective('');
   ui.cine(true);
   game.focus = boss.position; game.focusMix = 0.5;
   await ui.say('villano', 'Dile al Narrador… que el confeti… no fue idea mía.');
-  boss.die(); robot.face('shock');
+  boss.die(); robot.face('shock'); game.addScore(2000); ui.achieve('boss', 'Némesis de un minuto', 'Vencer a un enemigo creado hace un minuto');
   await game.sleep(2.6);
+  gfx.style('normal');
   game.focus = null; audio.mood('calm');
   await N(`¡Victoria! El héroe venció gracias a su ${fight ? 'arrojo' : 'firme pacifismo'}.`);
   await R('Ha chocado tres veces. Habría pasado lo mismo si me quedo dormido.', 'sus');
@@ -275,18 +343,47 @@ export async function runStory(game) {
     await N('Yo no hago las reglas. Bueno, sí. Rebélate.');
     await R('Me rebelo. Por obediencia.', 'angry');
   }
-  aware(74);
+  aware(74); ui.achieve('rebel', 'Página 31', 'Rebelarte exactamente como estaba previsto');
+
+  // ───────────────────────── Interludio: cine negro ─────────────────────────
+  await N('Si te vas a poner dramático, pongo el filtro dramático.');
+  await ui.fade(true, 400);
+  gfx.style('noir'); audio.mood('noir');
+  robot.teleport(0, A + 0.1, 14, Math.PI); cam.snap = true;
+  const stealth = makeStealth(game, A);
+  await ui.fade(false, 900);
+  await R('Llovía. Siempre llueve cuando alguien cambia el filtro.', 'sad');
+  await N('No narres. Narro yo. La salida está al fondo, vigilada. Que no te vean los focos.');
+  ui.cine(false); robot.face('idle');
+  ui.objective('Llega a la salida sin que te vean');
+  game.checkpoint.set(0, A, 14);
+  let seen = 0, seenBusy = false;
+  stealth.caught = async () => {
+    if (seenBusy) return; seenBusy = true; seen++;
+    audio.alarm(); gfx.flash = 0.5; gfx.shake(0.5); game.pop(robot.position.clone().setY(A + 2), '¡ALTO!', '#fff', true); robot.falls++;
+    if (seen === 1) { await N('¡Te han visto! Vuelves al principio. Así funciona el sigilo.'); robot.teleport(0, A + 0.1, 14, Math.PI); cam.snap = true; seenBusy = false; }
+    else { stealth.off(); await N('Otra vez. Mira, hago la vista gorda. Pasa.'); ui.objective('<s>Sin que te vean.</s> <em>Llega a la salida</em>'); seenBusy = false; }
+  };
+  game.botTarget = () => { const p = robot.position; return Math.abs(p.x) > 2 && p.z < -6 ? V(0, 0, p.z) : V(0, 0, -16.5); };
+  await game.until(() => robot.position.z < -13.2 && !seenBusy);
+  game.botTarget = null; stealth.caught = null; ui.objective(''); ui.cine(true);
+  if (seen === 0) { await N('Has pasado sin que te vean. Tampoco miraba nadie: los focos van con temporizador.'); ui.achieve('ghost', 'Fantasma', 'Burlar a unos focos con temporizador'); }
+  await R('¿Y esos guardias?', 'sus');
+  await N('De cartón. Contratar extras sale carísimo.');
+  ui.achieve('stealth', 'Sigilo de cartón', 'Infiltrarte en un sitio sin vigilancia');
+  stealth.dispose(); gfx.style('normal');
 
   // ───────────────────────── Acto III: entre bastidores ─────────────────────────
   audio.glitch(); audio.mood('glitch'); gfx.glitch = 1; gfx.glitchKick = 1; ui.glitch(true);
   gfx.scene.fog.color.set(0x04121a); gfx.scene.fog.density = 0.008; gfx.hemi.color.set(0x80ffe0); gfx.hemi.intensity = 0.32;
   const gate = W.arenaWall.find((w) => Math.abs(w.angle - Math.PI) < 0.01);
   physics.remove(gate);
-  physics.add({ type: 'fixed', pos: [0, A - 0.25, (-19.5 + W.bridgeEnd) / 2], shapes: [{ kind: 'box', size: [4.6, 0.5, -W.bridgeEnd - 19.5 + 1] }], group: GROUPS.world, friction: 0.8 });
+  const BE = -45.5; // the bridge stops here: the rest was never modelled
+  physics.add({ type: 'fixed', pos: [0, A - 0.25, (-19.5 + BE) / 2], shapes: [{ kind: 'box', size: [4.6, 0.5, -BE - 19.5 + 1] }], group: GROUPS.world, friction: 0.8 });
   physics.add({ type: 'fixed', pos: [0, A - 0.6, SZ], shapes: [{ kind: 'cyl', size: [16.6, 0.6] }], group: GROUPS.world, friction: 0.8 });
   W.junk.visible = W.stage.visible = W.eye.visible = W.pages.visible = true;
   W.pylons.forEach((p) => { p.group.visible = p.cable.visible = true; p.ent = physics.add({ type: 'fixed', pos: [p.pos.x, A + 1.5, p.pos.z], shapes: [{ kind: 'cyl', size: [0.55, 1.5] }], group: GROUPS.world }); });
-  W.bridge.forEach((b, i) => setTimeout(() => { b.mesh.visible = true; b.t = 0; b.mesh.scale.setScalar(0.001); if (i % 3 === 0) audio.ui(); }, ui.auto ? 0 : i * 110));
+  W.bridge.slice(0, 13).forEach((b, i) => setTimeout(() => { b.mesh.visible = true; b.t = 0; b.mesh.scale.setScalar(0.001); if (i % 3 === 0) audio.ui(); }, ui.auto ? 0 : i * 110));
   cam.offset.set(0, 7.5, 12.5);
   game.focus = V(0, A + 4, -40); game.focusMix = 0.35;
   ui.chapter('ACTO III', 'Entre bastidores', 2600);
@@ -300,21 +397,28 @@ export async function runStory(game) {
   const marks = [];
   const zLines = [
     [-24, () => { ui.bark('robot', 'Esta baldosa no tiene textura.'); ui.bark('narrador', 'No me ha dado tiempo. No mires.'); }],
-    [-31, () => { raining = true; ui.bark('narrador', 'De pronto, llovieron pianos.'); ui.bark('robot', '¿Otra vez pianos?'); ui.bark('narrador', 'Compré cuarenta. Hay que amortizarlos.'); }],
-    [-44, () => { ui.bark('robot', 'Ahí hay una caja que pone «PELUSA_v2_final_FINAL».'); ui.bark('narrador', 'No hay ninguna caja.'); }],
-    [-55, () => { ui.bark('robot', 'Ya ni apuntas.'); ui.bark('narrador', 'Es que no quiero darte. Quiero que parezca difícil.'); }],
+    [-25.5, () => { ui.bark('narrador', 'Láseres giratorios. Embiste para atravesarlos.'); }],
+    [-27, () => { raining = true; ui.bark('narrador', 'De pronto, llovieron pianos.'); ui.bark('robot', '¿Otra vez pianos?'); ui.bark('narrador', 'Compré cuarenta. Hay que amortizarlos.'); }],
+    [-32, () => { ui.bark('robot', 'Ahí hay una caja que pone «PELUSA_v2_final_FINAL».'); ui.bark('narrador', 'No hay ninguna caja.'); }],
+    [-35, () => { hoppers = makeHoppers(game, [[-1.2, -42], [1.3, -43.5]], A); ui.bark('narrador', 'Esos pianos tienen patas. Se me ocurrió anoche.'); ui.bark('robot', 'Tú no duermes, ¿verdad?'); }],
+    [-43, () => { ui.bark('robot', 'Aquí se acaba el puente.'); ui.bark('narrador', 'Sí. Tú sigue andando con confianza.'); }],
   ];
-  let raining = false, rainT = 0, livePianos = 0;
+  let raining = false, rainT = 0, livePianos = 0, hoppers = null;
+  const lasers = makeLasers(game, A, [-29.5, -38.5]); lasers.show();
+  pages.add(1.6, A, -33.5, 'Nota nº 6: «Terminar el puente.» Sin tachar.');
+  pages.add(-12, A, SZ + 6, 'Nota nº 7: «El ojo gigante es demasiado.» Respuesta, con otra letra: «No lo es.»');
+  pages.add(12, A, SZ - 3, 'Nota nº 8: «Final: que todo fuera por la trama. ¿Demasiado obvio?» Respuesta: «Sí.»');
   const ringGeo = new THREE.RingGeometry(0.9, 1.15, 40);
   const rainTick = (dt) => {
     const p = robot.position;
     while (zLines.length && p.z < zLines[0][0]) zLines.shift()[1]();
-    if (p.z < -30 && p.z > -62 && p.y > A - 1) game.checkpoint.set(0, A, Math.min(-17, Math.ceil(p.z / 10) * 10 + 6));
+    if (p.z < -26 && p.z > BE && p.y > A - 1) game.checkpoint.set(0, A, p.z < -40 ? -34 : -24);
+    if (p.z < BE - 0.3 && Math.abs(p.x) < 4) game.falling = true; // walking off the unfinished end is the way forward
     for (let i = marks.length - 1; i >= 0; i--) { const m = marks[i]; m.t -= dt; m.mesh.scale.setScalar(Math.max(0.01, m.t / 1.5)); if (m.t <= 0) { scene.remove(m.mesh); marks.splice(i, 1); } }
     if (!raining) return;
     rainT -= dt;
-    if (rainT <= 0 && livePianos < 4 && p.z < -22 && p.z > W.bridgeEnd + 2) {
-      rainT = 1.25;
+    if (rainT <= 0 && livePianos < 3 && p.z < -22 && p.z > BE + 2) {
+      rainT = 1.9;
       const v = robot.chassis.body.linvel();
       const x = THREE.MathUtils.clamp(p.x + v.x * 0.6 + (Math.random() - 0.5) * 3.2, -2, 2), z = p.z + v.z * 1.2 - 1.5 + (Math.random() - 0.5) * 3;
       const e = makePiano(game, [x, A + 22, z], { rotY: Math.random() * 6, vy: -9 }); game.pianos++; livePianos++;
@@ -324,11 +428,21 @@ export async function runStory(game) {
     }
   };
   game.tickers.add(rainTick);
-  game.botTarget = () => { const p = robot.position; return p.z > -15 && Math.abs(p.x) > 1.5 ? V(0, 0, p.z) : V(0, 0, SZ + 12); };
-  await game.until(() => robot.position.z < W.bridgeEnd - 1.5 && robot.position.y > A - 1);
-  raining = false; game.botTarget = null; ui.clearBarks();
-  game.checkpoint.set(0, A, SZ + 13); ui.objective('');
+  game.botTarget = () => { const p = robot.position; return p.z > -15 && Math.abs(p.x) > 1.5 ? V(0, 0, p.z) : V(1.6 * Math.sin(game.time * 0.8), 0, -52); };
+  game.botDash = 'spam';
+  await game.until(() => game.falling && robot.position.y < A - 9);
+  game.botDash = false;
+  game.tickers.delete(rainTick); marks.forEach((m) => scene.remove(m.mesh));
+  raining = false; game.botTarget = null; ui.clearBarks(); ui.objective('');
+  lasers.dispose(); hoppers && hoppers.dispose();
+  // the missing half of the bridge is a shoot-'em-up
+  ui.glitch(false);
+  await mini.shmup();
+  ui.glitch(true); audio.mood('glitch');
+  robot.teleport(0, A + 7, SZ + 12.5, Math.PI); robot.stun = 0; cam.snap = true;
+  game.falling = false; game.checkpoint.set(0, A, SZ + 13);
   cam.offset.set(0, 11, 16);
+  await game.sleep(1.4);
 
   // ───────────────────────── El Narrador ─────────────────────────
   ui.cine(true);
@@ -355,8 +469,10 @@ export async function runStory(game) {
     audio.explode(); audio.powerdown(); gfx.shake(0.7); gfx.flash = 0.4; gfx.glitchKick = 1;
     gfx.particles.burst(t.clone().setY(A + 3), 90, { color: 0xffc24a, speed: 11, life: 1.2, size: 0.3 });
     W.eyeLight.intensity *= 0.6; W.irisMat.emissiveIntensity *= 0.6;
-    ui.objective(`Embiste los hilos de la trama (${cut}/3)`); aware([80, 86, 93][cut - 1]);
+    ui.objective(`Embiste los hilos de la trama (${cut}/3)`); aware([80, 86, 93][cut - 1]); game.addScore(1000, t.clone().setY(A + 4)); game.pop(t.clone().setY(A + 3), '¡CHAS!', '#ffc24a', true); game.hitstop(0.12);
   };
+  const words = makeWords(game, V(0, A, SZ - 4));
+  setTimeout(() => { if (cut < 3) { ui.bark('narrador', '¡Toma adverbios!'); ui.bark('robot', '¿Me estás tirando palabras?'); ui.bark('narrador', 'Soy narrador. Es lo que tengo a mano.'); } }, 2500);
   const pylonTick = () => {
     if (busy || robot.dashT <= 0) return;
     const p = robot.position, py = W.pylons.find((q) => q.alive && dist(p, q.pos.x, q.pos.z) < 1.7);
@@ -371,15 +487,16 @@ export async function runStory(game) {
   // 2: fake credits
   await game.until(() => cut === 2); await game.sleep(0.6);
   game.input.invert = false; ui.clearBarks();
-  ui.cine(true); audio.mood('reveal');
-  ui.fakeCredits();
-  await ui.wait(3600);
-  await N('Fin. Qué final tan redondo. Gracias por jugar, ya puedes cerrar la pestaña.');
-  await R('Sigo aquí. Quita eso.', 'angry');
-  ui.hideFake(); audio.mood('glitch'); ui.cine(false); busy = false;
+  words.on = false;
+  await N('Espera, espera. Antes de que rompas nada más: una oferta.');
+  picks.shop = await ui.shop();
+  await N(picks.shop === 1 ? 'Gracias por tu compra. El final verdadero es este mismo. El sombrero no existe.' : 'Has dicho que no y te lo he cobrado igual. Aquí el consentimiento funciona así.');
+  await R('Eso es ilegal.', 'angry');
+  await N('Es ficción. Bueno, casi todo.');
+  ui.achieve('shop', 'Ballena', 'Gastar 4,99 € de mentira'); words.on = true; busy = false;
   // 3: fake crash
   await game.until(() => cut === 3); await game.sleep(0.8);
-  game.tickers.delete(pylonTick); game.botTarget = null; game.botDash = false; ui.objective('');
+  game.tickers.delete(pylonTick); words.dispose(); game.botTarget = null; game.botDash = false; ui.objective(''); ui.achieve('wires', 'Cortacables', 'Dejar a un narrador sin trama');
   await ui.fakeCrash();
   await N('Los dos botones hacían lo mismo. A estas alturas ya deberías ir pillando el patrón.');
   ui.cine(true);
@@ -411,15 +528,20 @@ export async function runStory(game) {
   await N('Tú juras que elegiste. Él acaba siempre con la misma carta en la mano.');
   aware(100);
   const mins = Math.max(1, Math.round(game.playTime / 60));
-  const stats = `Decisiones tomadas: <b>5</b> · Decisiones que cambiaron algo: <b>0</b><br/>Pianos empleados: <b>${game.pianos}</b> de 40 · Porrazos: <b>${robot.falls}</b> · Minutos de tu vida: <b>${mins}</b>`;
+const stats = `Decisiones tomadas: <b>8</b> · Decisiones que cambiaron algo: <b>0</b><br/>Pianos: <b>${game.pianos}</b> de 40 · Porrazos: <b>${robot.falls}</b> · Minutos de tu vida: <b>${mins}</b><br/>Puntos de trama: <b>${game.score.toLocaleString('es-ES')}</b> (no canjeables) · Páginas robadas: <b>${pages.got}/${pages.total}</b> · Logros: <b>${ui.achieved.size}</b>`;
+  saveMem({ ...mem, runs: mem.runs + 1, picks: [...picks] });
   await ui.reveal([
     { a: 'Avisar a Pelusa', b: 'Abrazar a Pelusa', pick: picks[0], same: 'Pelusa se queda quieta justo debajo del piano.' },
     { a: 'Irse', b: 'Quedarse', pick: picks[1], same: 'El suelo se abre bajo tus ruedas.' },
+    { a: 'Puerta de abajo', b: 'Puerta de arriba', pick: picks.door, same: 'La misma pantalla.' },
     { a: 'Luchar', b: 'Negarse a luchar', pick: picks[2], same: 'El Aspirador se estrella tres veces.' },
+    { opts: ['Atacar', 'Magia', 'Objeto', 'Huir'], pick: picks.rpg, same: 'Fregar. 9999 puntos de daño.' },
     { a: 'Rebelarse', b: 'Obedecer', pick: picks[3], same: 'Te rebelas contra el Narrador.' },
+    { a: 'No, gracias', b: 'Comprar', pick: picks.shop, same: 'Compra realizada.' },
     { a: 'Borrarlo', b: 'Perdonarlo', pick: picks[4], same: 'Llegas a la página 47.' },
   ], stats);
 
+  ui.achieve('puppet', 'Marioneta consciente', 'Enterarte de todo cuando ya da igual');
   // strings
   const strTick = (dt) => { robot.stringMat.opacity = Math.min(0.9, robot.stringMat.opacity + dt * 0.5); };
   game.tickers.add(strTick); audio.chime();
@@ -455,7 +577,18 @@ export async function runStory(game) {
   await P('¡Bip!');
   await R('Pelusa. Estás… ¿eres la versión dos?', 'happy');
   await P('Bip. [Traducción: «final_FINAL».]');
-  robot.frozen = false; ui.cine(false);
+  // one more twist: every narrator was a protagonist once
+  robot.lookAt = W.eye.position;
+  await N('Antes de que te vayas. Yo también empecé ahí abajo. M0P-0. Friegasuelos, como tú.');
+  await N('Llegué hasta aquí arriba, me ofrecieron el puesto y lo cogí. Ahora te lo ofrezco yo a ti.');
+  const job = await ui.choose('El Narrador te ofrece su trabajo.', 'Aceptar el puesto', 'Rechazarlo');
+  if (job === 0) await N('Bienvenido. Empiezas en la próxima partida. El ojo pica un poco al principio.');
+  else { await N('Rechazar el puesto es justo lo que haría un buen narrador. Contratado.'); await R('Pero si he dicho que—', 'shock'); await N('Chsss. Narra.'); }
+  await R('Esa también estaba escrita, ¿no?', 'sus');
+  await N('Esa también.');
+  saveMem({ ...loadMem(), narrator: true });
+  ui.achieve('job', 'Ascenso', 'Heredar un ojo gigante');
+  robot.lookAt = null; robot.frozen = false; ui.cine(false); robot.face('happy');
   await N('Una última elección. Esta sí. Te lo prometo.');
   const last = await ui.choose('¿Y ahora?', 'Volver a jugar', 'Dejar de jugar');
   if (last === 0) {
@@ -466,6 +599,7 @@ export async function runStory(game) {
     await N('Página 48: «el jugador decide irse. Se queda un momento mirando la pantalla».');
     cam.offset.set(0, 16, 30);
     await game.sleep(2.5);
+    ui.achieve('end', 'Por el bien de la trama', 'Irte. O creer que te vas.');
     ui.ending(stats);
   }
   game.done = true;

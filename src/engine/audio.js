@@ -34,6 +34,8 @@ export class Audio {
       calm: { chords: [[220, 277.2, 329.6, 415.3], [174.6, 220, 261.6, 329.6], [196, 246.9, 293.7, 370], [164.8, 207.7, 246.9, 311.1]], bar: 6, pluck: 0.5 },
       tense: { chords: [[110, 130.8, 164.8, 196], [103.8, 130.8, 155.6, 196], [116.5, 138.6, 164.8, 207.7], [98, 123.5, 146.8, 185]], bar: 3, pluck: 0.9 },
       glitch: { chords: [[146.8, 174.6, 220, 277.2], [138.6, 174.6, 207.7, 261.6], [155.6, 185, 233.1, 277.2], [130.8, 164.8, 196, 246.9]], bar: 2.4, pluck: 1 },
+      chip: { chords: [[261.6, 329.6, 392, 523.3], [220, 261.6, 329.6, 440], [174.6, 220, 261.6, 349.2], [196, 246.9, 293.7, 392]], bar: 1.6, pluck: 2.5, sq: true },
+      noir: { chords: [[146.8, 174.6, 220, 261.6], [130.8, 155.6, 196, 246.9], [116.5, 146.8, 174.6, 220], [110, 138.6, 164.8, 207.7]], bar: 5, pluck: 0.35 },
       reveal: { chords: [[261.6, 329.6, 392, 493.9], [220, 261.6, 329.6, 392], [174.6, 220, 261.6, 349.2], [196, 246.9, 293.7, 392]], bar: 5, pluck: 0.7 },
     };
     let i = 0, next = ctx.currentTime + 0.2;
@@ -41,10 +43,10 @@ export class Audio {
       if (!this.ctx) return;
       while (next < ctx.currentTime + 0.5) {
         const m = moods[this.musicMood] || moods.calm, ch = m.chords[i++ % m.chords.length];
-        for (const f of ch) this._pad(f, next, m.bar * 1.25);
-        this._pad(ch[0] / 2, next, m.bar * 1.25, 0.09);
+        if (!m.sq) { for (const f of ch) this._pad(f, next, m.bar * 1.25); this._pad(ch[0] / 2, next, m.bar * 1.25, 0.09); }
+        else for (let k = 0; k < 8; k++) this._pluck(ch[0] / 2, next + k * m.bar / 8, 'square', 0.05, 0.16);
         const n = Math.round(m.bar * 2 * m.pluck);
-        for (let k = 0; k < n; k++) if (Math.random() < 0.7) this._pluck(ch[(Math.random() * 4) | 0] * (Math.random() < 0.4 ? 4 : 2), next + (k / n) * m.bar + (this.musicMood === 'glitch' ? Math.random() * 0.08 : 0));
+        for (let k = 0; k < n; k++) if (m.sq) this._pluck(ch[[0, 2, 1, 3, 2, 1, 3, 2][k % 8]] * 2, next + (k / n) * m.bar, 'square', 0.035, 0.18); else if (Math.random() < 0.7) this._pluck(ch[(Math.random() * 4) | 0] * (Math.random() < 0.4 ? 4 : 2), next + (k / n) * m.bar + (this.musicMood === 'glitch' ? Math.random() * 0.08 : 0));
         if (this.musicMood === 'tense' || this.musicMood === 'glitch') for (let k = 0; k < m.bar * 2; k++) this._kick(next + k * 0.5, k % 2 ? 0.25 : 0.5);
         next += m.bar;
       }
@@ -59,11 +61,11 @@ export class Audio {
     for (const det of [-6, 5]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det; o.connect(lp); o.start(t); o.stop(t + dur + 0.1); }
     lp.connect(g).connect(this.music);
   }
-  _pluck(f, t) {
+  _pluck(f, t, type = 'triangle', vol = 0.07, dur = 1.4) {
     const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'triangle'; o.frequency.value = f;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.4);
-    o.connect(g).connect(this.music); o.start(t); o.stop(t + 1.5);
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.music); o.start(t); o.stop(t + dur + 0.1);
   }
   _kick(t, vol) {
     const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
@@ -115,5 +117,14 @@ export class Audio {
   rumble(d = 2) { this._noise(d, { f: 90, vol: 0.9, q: 1 }); }
   powerdown() { this._tone(520, 1.6, { type: 'sawtooth', vol: 0.2, f2: 30 }); }
   chime() { [523.3, 659.3, 784, 1046.5].forEach((f, i) => this._tone(f, 1.8, { type: 'triangle', vol: 0.12, t0: i * 0.16 })); }
+  jump() { this._tone(330, 0.16, { type: 'square', vol: 0.07, f2: 760 }); }
+  coin() { this._tone(988, 0.08, { type: 'square', vol: 0.07 }); this._tone(1319, 0.3, { type: 'square', vol: 0.07, t0: 0.08 }); }
+  shoot() { this._tone(900, 0.07, { type: 'square', vol: 0.03, f2: 300 }); }
+  stomp() { this._tone(220, 0.14, { type: 'square', vol: 0.09, f2: 60 }); }
+  hurt() { this._tone(200, 0.3, { type: 'sawtooth', vol: 0.12, f2: 50 }); }
+  charge(p) { this._tone(180 + p * 500, 0.07, { type: 'sawtooth', vol: 0.03 }); }
+  superDash() { this._noise(0.5, { f: 300, f2: 5000, type: 'bandpass', q: 1.5, vol: 0.5 }); this._tone(120, 0.45, { type: 'sawtooth', vol: 0.14, f2: 900 }); }
+  trophy() { [659.3, 784, 1046.5, 1318.5].forEach((f, i) => this._tone(f, 0.22, { type: 'square', vol: 0.05, t0: i * 0.07 })); }
+  laser() { this._tone(1400, 0.25, { type: 'sawtooth', vol: 0.08, f2: 200 }); }
   beep(up = true) { this._tone(up ? 900 : 700, 0.09, { vol: 0.1 }); this._tone(up ? 1350 : 500, 0.12, { vol: 0.1, t0: 0.09 }); }
 }

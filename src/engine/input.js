@@ -3,7 +3,7 @@ export class Input {
   constructor() {
     this.move = { x: 0, y: 0 };
     this.keys = new Set();
-    this._action = false;
+    this._action = false; this.btnDown = false; this.lastInput = performance.now();
     this._advance = false;
     this.enabled = true;
     this.invert = false;
@@ -52,8 +52,8 @@ export class Input {
     };
     addEventListener('pointerup', end); addEventListener('pointercancel', end);
 
-    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this._action = true; btn.classList.add('down'); });
-    const up = () => btn.classList.remove('down');
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); this._action = true; this.btnDown = true; btn.classList.add('down'); });
+    const up = () => { btn.classList.remove('down'); this.btnDown = false; };
     btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up); btn.addEventListener('pointerleave', up);
     addEventListener('contextmenu', (e) => e.preventDefault());
   }
@@ -66,6 +66,8 @@ export class Input {
     if (k.has('KeyW') || k.has('ArrowUp')) y -= 1;
     if (k.has('KeyS') || k.has('ArrowDown')) y += 1;
     if (this.stick.id !== null) { x = this.stick.x; y = this.stick.y; }
+    this.held = this.enabled && (this.btnDown || k.has('Space') || k.has('KeyE'));
+    if (x || y || this._action || this.held) this.lastInput = performance.now();
     if (this.bot) { const b = this.bot(); if (b) { x = b.x; y = b.y; if (b.action) this._action = true; } }
     const l = Math.hypot(x, y);
     if (l > 1) { x /= l; y /= l; }

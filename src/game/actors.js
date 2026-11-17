@@ -37,7 +37,8 @@ export function makeCrate(game, pos, size = 1, label = 'ATREZO') {
   const mat = new THREE.MeshStandardMaterial({ map: woodTex(label), roughness: 0.8, bumpMap: crateBump, bumpScale: 0.6 });
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), mat); mesh.castShadow = mesh.receiveShadow = true;
   game.gfx.scene.add(mesh);
-  return game.physics.add({ mesh, pos: [pos[0], pos[1] + size / 2, pos[2]], rotY: Math.random() * 0.6 - 0.3, shapes: [{ kind: 'box', size: [size, size, size] }], density: 0.35, friction: 0.6, impact: 250, tag: 'crate' });
+  const e = game.physics.add({ mesh, pos: [pos[0], pos[1] + size / 2, pos[2]], rotY: Math.random() * 0.6 - 0.3, shapes: [{ kind: 'box', size: [size, size, size] }], density: 0.35, friction: 0.6, impact: 250, tag: 'crate' });
+  game.crates.push(e); return e;
 }
 export function makeCone(game, pos) {
   const g = new THREE.Group();

@@ -22,7 +22,7 @@ class Game {
     this.time = 0; this.timeScale = 1; this.playTime = 0;
     this.floorY = 0; this.checkpoint = V(0, 0, 2); this.falling = false; this.onFall = null;
     this.focus = null; this.focusMix = 0.5; this.botTarget = null; this.botDash = false;
-    this.pelusa = null; this.boss = null; this.pianos = 0; this.lampKick = 0;
+    this.pelusa = null; this.boss = null; this.pianos = 0; this.lampKick = 0; this.stopT = 0; this.score = 0; this.crates = []; this.smashed = 0;
     this.world = buildWorld(this);
     this.robot = new Robot(this, V(0, 0, 2));
     this.robot.face('off'); this.robot.frozen = true;
@@ -56,7 +56,7 @@ class Game {
       if (d < 0.25) return { x: 0, y: 0, action: false };
       const { fx, fz } = this._camBasis();
       const wx = dx / d, wz = dz / d;
-      return { x: wx * -fz + wz * fx, y: -(wx * fx + wz * fz), action: this.botDash && d < 3.5 };
+      return { x: wx * -fz + wz * fx, y: -(wx * fx + wz * fz), action: this.botDash === 'spam' ? Math.random() < 0.08 : this.botDash && d < 3.5 };
     };
   }
 
@@ -65,6 +65,15 @@ class Game {
     return { fx: -o.x / l, fz: -o.z / l };
   }
 
+  hitstop(sec) { this.stopT = Math.max(this.stopT, sec); }
+  buzz(ms) { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) { /* not supported */ } }
+  /** comic-book popup at a world position */
+  pop(pos, text, color = '#fff', big = false) {
+    _v.copy(pos).project(this.gfx.camera);
+    if (_v.z > 1) return;
+    this.ui.pop((_v.x * 0.5 + 0.5) * innerWidth, (-_v.y * 0.5 + 0.5) * innerHeight, text, color, big);
+  }
+  addScore(n, pos) { this.score += n; this.ui.score(this.score); if (pos) this.pop(pos, '+' + n, '#f2c14e'); }
   sleep(sec) { if (this.ui.auto) sec = Math.min(sec, 0.12); return new Promise((res) => { let t = 0; const f = (dt) => { t += dt; if (t >= sec) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
   until(cond, timeout = 1e9) { return new Promise((res) => { let t = 0; const f = (dt) => { t += dt; if (cond() || t > timeout) { this.tickers.delete(f); res(); } }; this.tickers.add(f); }); }
 
@@ -73,16 +82,19 @@ class Game {
     const frame = (now) => {
       requestAnimationFrame(frame);
       const raw = Math.min(0.05, (now - last) / 1000); last = now;
-      const dt = raw * this.timeScale;
+      let dt = raw * this.timeScale;
+      if (this.stopT > 0) { this.stopT -= raw; dt *= 0.04; }
+      if (this.paused3d) dt = 0;
       this.time += dt; this.playTime += raw;
       const { input, robot, gfx, world: W } = this;
       input.update();
+      if (this.paused3d) { input.btn.classList.remove('cool'); return; } // a 2D minigame owns the screen: skip the whole 3D frame
       const { fx, fz } = this._camBasis();
       const mx = input.move.x * -fz + -input.move.y * fx, mz = input.move.x * fx + -input.move.y * fz;
       let dash = input.action();
       this.input.btn.classList.toggle('cool', robot.dashCd > 0);
       this.physics.update(dt, (h) => {
-        robot.step(h, mx, mz, dash); dash = false;
+        robot.step(h, mx, mz, dash, input.held); dash = false;
         this.pelusa && this.pelusa.step(h);
         this.boss && this.boss.step(h, robot);
         for (const s of this.steppers) s(h);
@@ -90,7 +102,7 @@ class Game {
       this.physics.sync();
       robot.update(dt, this.time);
       this.boss && this.boss.update(dt);
-      for (const t of [...this.tickers]) t(dt, raw);
+      if (!this.paused3d) for (const t of [...this.tickers]) t(dt, raw);
 
       // temporary bodies
       for (let i = this.temp.length - 1; i >= 0; i--) {
@@ -98,6 +110,18 @@ class Game {
         if (t.t <= 0 || t.e.body.translation().y < this.floorY - 60) {
           if (t.poof && t.e.alive) { const p = t.e.body.translation(); gfx.particles.burst(V(p.x, p.y, p.z), 30, { color: 0x35f0c8, speed: 5, life: 0.6, size: 0.25, gravity: 0 }); }
           this.physics.remove(t.e); this.temp.splice(i, 1);
+        }
+      }
+
+      // a super dash goes through crates
+      if (robot.superT > 0) for (let i = this.crates.length - 1; i >= 0; i--) {
+        const c = this.crates[i]; if (!c.alive) { this.crates.splice(i, 1); continue; }
+        const t = c.body.translation(), p = robot.position;
+        if (Math.hypot(t.x - p.x, t.z - p.z) < 1.5 && Math.abs(t.y - p.y - 0.6) < 1.6) {
+          const cp = V(t.x, t.y, t.z); this.physics.remove(c); this.crates.splice(i, 1); this.smashed++;
+          spawnDebris(this, cp, 12, { color: 0x9a6b3c, size: 0.22, speed: 8 }); this.audio.thud(1.2); this.hitstop(0.05); this.gfx.shake(0.3);
+          this.pop(cp, '¡CRAC!', '#ffb060'); this.addScore(100, cp.setY(cp.y + 0.8));
+          this.onSmash && this.onSmash(this.smashed);
         }
       }
 
@@ -154,7 +178,7 @@ game.init().then(() => {
   const btn = document.getElementById('btn-start');
   btn.disabled = false; btn.textContent = 'Empezar';
   const mute = document.getElementById('btn-mute');
-  mute.onclick = () => { game.audio.setMuted(!game.audio.muted); mute.classList.toggle('off', game.audio.muted); };
+  mute.onclick = () => { game.audio.setMuted(!game.audio.muted); mute.classList.toggle('off', game.audio.muted); game.onMute && game.onMute(game.audio.muted); };
   const go = () => {
     btn.onclick = null; game.focus = null;
     game.audio.start();
@@ -163,7 +187,14 @@ game.init().then(() => {
     runStory(game).catch((e) => console.error(e));
   };
   btn.onclick = go;
-  if (game.ui.auto) go();
+  const only = new URLSearchParams(location.search).get('mini'); // debug: jump straight into a 2D minigame
+  if (only) {
+    import('./game/mini2d.js').then(async ({ Mini2D }) => {
+      document.getElementById('title').classList.add('hidden'); game.audio.start(); game.ui.showControls(true);
+      const m = new Mini2D(game); window.__mini = m;
+      console.log('mini result', await m[only]());
+    });
+  } else if (game.ui.auto) go();
 }).catch((e) => {
   console.error(e);
   document.getElementById('btn-start').textContent = 'Tu navegador no soporta WebGL2';

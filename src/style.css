@@ -201,3 +201,42 @@ body.glitch #hud { animation-name: hudglitch; }
   #subtitle { top: 64px; }
   #title h1 { font-size: 46px; margin: 8px 0; } #title .tagline { margin-bottom: 14px; }
 }
+
+/* ---------- 2D layer ---------- */
+#c2d { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; z-index: 0; transition: opacity .3s; }
+
+/* ---------- juice ---------- */
+#score { top: calc(54px + var(--st)); left: 50%; transform: translateX(-50%); text-align: center; z-index: 3; transition: opacity .4s; }
+#score small { display: block; font: 600 8px var(--sans); letter-spacing: .25em; color: rgba(255,255,255,.5); }
+#score b { font: 700 18px var(--mono); color: var(--gold); display: inline-block; text-shadow: 0 2px 8px #000; }
+#score b.bump { animation: bump .3s; }
+@keyframes bump { 40% { transform: scale(1.5) rotate(-4deg); color: #fff; } }
+#pops { inset: 0; z-index: 4; overflow: hidden; }
+.pop { position: absolute; transform: translate(-50%, -50%); font: 900 clamp(18px, 3.4vw, 30px)/1 var(--sans); font-style: italic; letter-spacing: .02em; white-space: nowrap;
+  -webkit-text-stroke: 5px #0a0a12; paint-order: stroke fill; animation: popup .9s cubic-bezier(.2,1.4,.4,1) forwards; text-shadow: 3px 4px 0 rgba(0,0,0,.5); }
+.pop.big { font-size: clamp(34px, 7vw, 70px); animation-duration: 1.3s; }
+@keyframes popup { 0% { transform: translate(-50%, -50%) scale(.2) rotate(-12deg); opacity: 0; } 18% { transform: translate(-50%, -80%) scale(1.25) rotate(4deg); opacity: 1; }
+  70% { opacity: 1; } 100% { transform: translate(-50%, -190%) scale(1) rotate(-2deg); opacity: 0; } }
+#toast { left: 50%; bottom: calc(22px + var(--sb)); transform: translateX(-50%); display: flex; gap: 12px; align-items: center; padding: 10px 18px 10px 12px; border-radius: 999px;
+  background: rgba(12,14,24,.92); border: 1px solid rgba(242,193,78,.6); box-shadow: 0 10px 40px rgba(0,0,0,.6), 0 0 30px rgba(242,193,78,.2); z-index: 20;
+  transition: opacity .35s, transform .45s cubic-bezier(.2,1.5,.4,1); max-width: 92vw; }
+#toast.hidden { transform: translate(-50%, 40px); }
+#toast i { flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--gold); color: #111; display: grid; place-items: center; font: 700 18px var(--sans); font-style: normal; }
+#toast small { display: block; font: 600 8px var(--sans); letter-spacing: .25em; color: var(--gold); }
+#toast b { font: 600 14px var(--sans); display: block; } #toast span { font: 400 11px var(--sans); color: rgba(255,255,255,.6); }
+#qte { inset: 0; display: grid; place-content: center; gap: 18px; text-align: center; z-index: 9; background: radial-gradient(ellipse at center, rgba(5,6,13,.2), rgba(5,6,13,.75)); pointer-events: auto; transition: opacity .3s; padding: 20px; }
+#qte p { margin: 0; font: 800 clamp(20px, 4.5vw, 40px) var(--sans); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 3px 20px #000; animation: pulse .5s infinite alternate; }
+@keyframes pulse { to { transform: scale(1.06); } }
+#qte .meter { width: min(420px, 80vw); height: 12px; margin: 0 auto; } #qte .meter i { transition: width .12s; background: linear-gradient(90deg, #6aa7ff, #c9e2ff); }
+#qte .btn { justify-self: center; }
+#rpg { left: 50%; bottom: calc(14px + var(--sb)); transform: translateX(-50%); width: min(640px, 94vw); z-index: 9; font: 500 clamp(13px, 2.3vw, 17px)/1.5 var(--mono); transition: opacity .2s; }
+#rpg .log, #rpg .menu { background: #1c2a8c; border: 3px solid #fff; border-radius: 6px; box-shadow: 0 0 0 3px #0b1040, 0 12px 40px rgba(0,0,0,.6); padding: 12px 16px; }
+#rpg .log { min-height: 4.2em; margin-bottom: 8px; white-space: pre-wrap; }
+#rpg .menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+#rpg .menu:empty { display: none; }
+#rpg .menu button { pointer-events: auto; cursor: pointer; background: none; border: 0; color: #fff; font: inherit; text-align: left; padding: 8px 6px; border-radius: 4px; }
+#rpg .menu button::before { content: "▶ "; opacity: 0; } #rpg .menu button:hover::before, #rpg .menu button:focus::before { opacity: 1; }
+#rpg .menu button:hover, #rpg .menu button:active { background: rgba(255,255,255,.15); }
+#rpg .menu button.wide { grid-column: 1 / -1; text-align: center; }
+.trick.multi { grid-template-columns: 1fr; } .trick.multi .opts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; } .trick.multi .opt { flex: 1 1 100px; }
+body.mode2d #hud, body.mode2d #score { text-shadow: none; }

@@ -37,6 +37,7 @@ export class Robot {
     this.parts = [];
     this.stun = 0; this.dashT = 0; this.dashCd = 0; this.yaw = 0; this.dashDir = V(0, 0, 1);
     this.lastV = V(); this.onBonk = null; this.falls = 0; this.frozen = false; this.lookAt = null;
+    this.holdT = 0; this.charge = 0; this.superT = 0; this.sq = 0; this.sqV = 0; this.st = 0; this.stV = 0; this.dustT = 0; this.dashSpeed = 15; this.dashes = 0;
 
     // --- chassis ---
     const body = new THREE.Group();
@@ -139,7 +140,7 @@ export class Robot {
 
   /** go limp for `dur` seconds, optionally with a shove */
   knock(dur, impulse = null) {
-    this.stun = Math.max(this.stun, dur); this.dashT = 0;
+    this.stun = Math.max(this.stun, dur); this.dashT = 0; this.charge = 0; this.holdT = 0; this.superT = 0;
     if (impulse) {
       this.chassis.body.applyImpulse(impulse, true);
       this.chassis.body.applyTorqueImpulse({ x: (Math.random() - 0.5) * 4, y: (Math.random() - 0.5) * 2, z: (Math.random() - 0.5) * 4 }, true);
@@ -148,7 +149,7 @@ export class Robot {
   }
 
   /** called once per fixed physics step */
-  step(dt, mx, mz, wantDash) {
+  step(dt, mx, mz, wantDash, held = false) {
     const b = this.chassis.body, v = b.linvel();
     // detect being hit by something (or bonking a wall mid-dash)
     const dv = Math.hypot(v.x - this.lastV.x, v.y - this.lastV.y, v.z - this.lastV.z);
@@ -159,7 +160,12 @@ export class Robot {
       this.game.gfx.shake(dashing ? 0.25 : 0.45);
       this.game.gfx.particles.burst(this.position.clone().setY(this.pos.y + 0.6), 14, { color: 0xffc070, speed: 5, life: 0.5, size: 0.12 });
       if (dashing && this.onBonk) this.onBonk(this.position);
+      this.sqV += 9; this.game.hitstop(dashing ? 0.05 : 0.09); this.game.buzz(dashing ? 25 : 60);
+      this.game.pop(this.position.clone().setY(this.pos.y + 1.6), ['¡PAF!', '¡CLONC!', '¡AY!', '¡POM!', '¡ÑEC!'][(Math.random() * 5) | 0], '#ffd24a');
     }
+    // landing
+    if (this.lastV.y < -7 && v.y > -1.5 && dv <= 8.5) { this.sqV += 7; this.game.gfx.particles.burst(this.position.clone(), 16, { color: 0xbbbbcc, speed: 4, life: 0.5, size: 0.3, up: 0.2, gravity: -1, drag: 3 }); }
+    this.superT -= dt;
     this.dashCd -= dt;
     if (this.stun > 0) {
       this.stun -= dt;
@@ -167,19 +173,38 @@ export class Robot {
       this.lastV.set(v.x, v.y, v.z);
       return;
     }
-    if (this.frozen) { mx = 0; mz = 0; wantDash = false; }
+    if (this.frozen) { mx = 0; mz = 0; wantDash = false; held = false; }
     const moving = Math.hypot(mx, mz) > 0.05;
     if (moving) this.yaw = Math.atan2(mx, mz);
-    if (wantDash && this.dashCd <= 0) {
-      this.dashT = 0.26; this.dashCd = 0.75;
+    // hold to charge, release for a super dash
+    if (held && this.dashT <= 0) {
+      this.holdT += dt; const c = Math.min(1, Math.max(0, (this.holdT - 0.28) / 0.8));
+      if (c > 0 && Math.floor(this.holdT * 12) !== Math.floor((this.holdT - dt) * 12)) this.game.audio.charge(c);
+      this.charge = c;
+      if (c > 0) {
+        mx *= 0.4; mz *= 0.4; this.sq = -0.12 * c + Math.sin(this.holdT * 50) * 0.03 * c;
+        const p = this.position; this.game.gfx.particles.burst(V(p.x, p.y + 0.5, p.z), 1, { color: c >= 1 ? 0xffffff : 0x6fe3ff, speed: 3 + c * 4, life: 0.3, size: 0.12 + c * 0.2, gravity: 4, spread: 2 });
+        if (c >= 1) this.game.gfx.shake(0.06);
+      }
+    } else if (this.charge > 0.3) {
+      const c = this.charge; this.charge = 0; this.holdT = 0;
+      this.dashT = 0.3 + c * 0.16; this.superT = this.dashT + 0.12; this.dashCd = 0.9; this.dashSpeed = 17 + c * 9; this.dashes++;
+      this.dashDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      this.game.audio.superDash(); this.game.gfx.speed = 1; this.game.gfx.shake(0.3); this.stV -= 14; this.game.buzz(40);
+      this.game.gfx.cam.fov = 50; setTimeout(() => (this.game.gfx.cam.fov = 42), 420);
+      this.game.gfx.particles.burst(this.position.clone().setY(this.pos.y + 0.4), 40, { color: 0x6fe3ff, speed: 8, life: 0.6, size: 0.25, gravity: 0 });
+      this.game.pop(this.position.clone().setY(this.pos.y + 1.8), '¡TURBOFREGONA!', '#6fe3ff');
+    } else { this.charge = 0; if (!held) this.holdT = 0; }
+    if (wantDash && this.dashCd <= 0 && this.dashT <= 0) {
+      this.dashT = 0.26; this.dashCd = 0.75; this.dashSpeed = 15; this.stV -= 8; this.game.gfx.speed = Math.max(this.game.gfx.speed, 0.5); this.dashes++;
       this.dashDir.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       this.game.audio.dash();
       this.game.gfx.cam.fov = 46; setTimeout(() => (this.game.gfx.cam.fov = 42), 260);
     }
     let tx = mx * 6.4, tz = mz * 6.4, k = 1 - Math.exp(-dt * 11);
     if (this.dashT > 0) {
-      this.dashT -= dt; tx = this.dashDir.x * 15; tz = this.dashDir.z * 15; k = 1 - Math.exp(-dt * 40);
-      this.game.gfx.particles.burst(this.position.clone().setY(this.pos.y + 0.3), 2, { color: 0x6fe3ff, speed: 1, life: 0.4, size: 0.2, gravity: 0 });
+      this.dashT -= dt; tx = this.dashDir.x * this.dashSpeed; tz = this.dashDir.z * this.dashSpeed; k = 1 - Math.exp(-dt * 40);
+      this.game.gfx.particles.burst(this.position.clone().setY(this.pos.y + 0.3), 2, { color: this.superT > 0 ? 0xffffff : 0x6fe3ff, speed: 1, life: 0.4, size: this.superT > 0 ? 0.4 : 0.2, gravity: 0 });
     }
     const nx = v.x + (tx - v.x) * k, nz = v.z + (tz - v.z) * k;
     b.setLinvel({ x: nx, y: v.y, z: nz }, true);
@@ -209,7 +234,20 @@ export class Robot {
 
   update(dt, time) {
     this.wheel.rotation.x += this.speed * dt * 4;
-    this.coreMat.emissiveIntensity = 2 + Math.sin(time * 3) * 0.6;
+    // squash & stretch springs
+    this.sqV += (-this.sq * 220 - this.sqV * 13) * dt; this.sq += this.sqV * dt;
+    this.stV += (-this.st * 200 - this.stV * 12) * dt; this.st += this.stV * dt;
+    const sq = THREE.MathUtils.clamp(this.sq, -0.4, 0.5), st = THREE.MathUtils.clamp(-this.st, -0.3, 0.6);
+    this.chassis.mesh.scale.set(1 + sq * 0.5 - st * 0.35, 1 - sq - st * 0.25, 1 + sq * 0.5 + st);
+    this.head.mesh.scale.setScalar(1 + sq * 0.25);
+    this.coreMat.emissive.setHex(this.charge >= 1 ? 0xffffff : 0x39d8ff);
+    // wheel dust
+    this.dustT -= dt;
+    if (this.dustT < 0 && this.speed > 3.5 && this.stun <= 0 && Math.abs(this.chassis.body.linvel().y) < 1) {
+      this.dustT = 0.09; const p = this.position;
+      this.game.gfx.particles.burst(V(p.x, p.y + 0.08, p.z), 1, { color: 0x8890a0, speed: 0.8, life: 0.5, size: 0.28, gravity: 1.5, up: 0.3, drag: 3 });
+    }
+    this.coreMat.emissiveIntensity = 2 + Math.sin(time * 3) * 0.6 + this.charge * 6;
     if (this.expr === 'idle' || this.expr === 'blink') {
       this.blinkT -= dt;
       if (this.blinkT < 0 && this.expr === 'idle') { this.expr = 'blink'; this._draw('blink'); this.blinkT = 0.12; }

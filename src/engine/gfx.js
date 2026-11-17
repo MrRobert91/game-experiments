@@ -9,16 +9,19 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 const FinalFX = {
   uniforms: {
     tDiffuse: { value: null }, uTime: { value: 0 }, uGlitch: { value: 0 }, uVignette: { value: 0.9 }, uAberration: { value: 0.0025 },
-    uGrain: { value: 0.045 }, uFlash: { value: 0 }, uDesat: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Color(1, 1, 1) },
+    uGrain: { value: 0.045 }, uFlash: { value: 0 }, uDesat: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) }, uTint: { value: new THREE.Color(1, 1, 1) }, uMode: { value: 0 }, uPixel: { value: 1 }, uSpeed: { value: 0 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }`,
   fragmentShader: `
     precision highp float;
-    uniform sampler2D tDiffuse; uniform float uTime, uGlitch, uVignette, uAberration, uGrain, uFlash, uDesat; uniform vec2 uRes; uniform vec3 uTint;
+    uniform sampler2D tDiffuse; uniform float uTime, uGlitch, uVignette, uAberration, uGrain, uFlash, uDesat, uMode, uPixel, uSpeed; uniform vec2 uRes; uniform vec3 uTint;
+    float lum(vec3 c){ return dot(c, vec3(.299, .587, .114)); }
     varying vec2 vUv;
     float hash(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
     void main(){
       vec2 uv = vUv; float g = uGlitch;
+      if (uMode > 3.5) { vec2 cc = uv - .5; uv = .5 + cc * (1. + dot(cc, cc) * .22); }
+      if (uPixel > 1.5) uv = (floor(uv * uRes / uPixel) + .5) * uPixel / uRes;
       if (g > 0.001) {
         float line = floor(uv.y * 36. + uTime * 5.);
         float n = hash(vec2(line, floor(uTime * 12.)));
@@ -32,6 +35,32 @@ const FinalFX = {
       c.r = texture2D(tDiffuse, uv + d * ab).r;
       c.g = texture2D(tDiffuse, uv).g;
       c.b = texture2D(tDiffuse, uv - d * ab).b;
+      if (uSpeed > .01) { vec3 a = c; for (int i = 1; i < 6; i++) a += texture2D(tDiffuse, uv - d * uSpeed * .035 * float(i)).rgb; c = a / 6.; }
+      if (uMode > .5 && uMode < 1.5) { // 8-bit: ordered dither + few colours
+        vec2 px = floor(vUv * uRes / max(uPixel, 1.));
+        float dth = (mod(px.x, 2.) + mod(px.y, 2.) * 2.) / 4. - .375;
+        c = floor(c * 5. + .5 + dth) / 5.; c = mix(vec3(lum(c)), c, 1.35);
+      } else if (uMode > 1.5 && uMode < 2.5) { // noir: only red survives
+        float l0 = lum(c); float red = smoothstep(.12, .4, c.r - max(c.g, c.b));
+        vec3 bw = vec3(clamp(pow(l0, 1.25) * 1.25, 0., 1.)) * vec3(1., .98, .93);
+        c = mix(bw, vec3(l0 * 2.4, 0., 0.) + bw * .15, red);
+        c *= .9 + .1 * step(.5, fract(vUv.y * 3. + uTime * .2));
+      } else if (uMode > 2.5 && uMode < 3.5) { // comic: ink lines, flat colour, halftone shadows
+        vec2 e = 1.4 / uRes; float gx = 0., gy = 0.;
+        for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) {
+          float s = lum(texture2D(tDiffuse, uv + vec2(float(i), float(j)) * e).rgb);
+          gx += s * float(i) * (j == 0 ? 2. : 1.); gy += s * float(j) * (i == 0 ? 2. : 1.);
+        }
+        float edge = smoothstep(.25, .6, length(vec2(gx, gy)));
+        float l0 = lum(c); c = floor(c * 5. + .5) / 5.; c = mix(vec3(lum(c)), c, 1.25);
+        vec2 hp = vUv * uRes / 7.; hp = fract(mat2(.707, -.707, .707, .707) * hp) - .5;
+        c *= 1. - step(length(hp), (.5 - l0) * .75) * .35;
+        c = mix(c, vec3(.02, .01, .05), edge);
+      } else if (uMode > 3.5) { // CRT
+        c *= .82 + .18 * sin(vUv.y * uRes.y * 1.6); c *= 1.15;
+        c.g *= .96 + .04 * sin(vUv.x * uRes.x * 2.);
+        if (uv.x < 0. || uv.x > 1. || uv.y < 0. || uv.y > 1.) c = vec3(0.);
+      }
       c *= 1. - g * .1 * step(.5, fract(uv.y * uRes.y * .25));
       float l = dot(c, vec3(.299, .587, .114));
       c = mix(c, vec3(l), uDesat);
@@ -111,7 +140,7 @@ export class Gfx {
       target: new THREE.Vector3(), offset: new THREE.Vector3(0, 9, 12), curOffset: new THREE.Vector3(0, 9, 12), look: new THREE.Vector3(),
       lookUp: 0.8, trauma: 0, fov: 42, stiff: 4, pos: new THREE.Vector3(0, 9, 12), snap: true,
     };
-    this.time = 0; this.flash = 0; this.glitch = 0; this.glitchKick = 0;
+    this.time = 0; this.flash = 0; this.glitch = 0; this.glitchKick = 0; this.speed = 0;
     this._ft = 16; this._ftN = 0;
 
     addEventListener('resize', () => this.resize());
@@ -166,6 +195,7 @@ export class Gfx {
     this.glitchKick = Math.max(0, this.glitchKick - rawDt * 1.5);
     this.u.uTime.value = this.time;
     this.u.uFlash.value = this.flash;
+    this.speed = Math.max(0, this.speed - rawDt * 2.2); this.u.uSpeed.value = this.speed;
     this.u.uGlitch.value = Math.min(1, this.glitch * (0.25 + 0.25 * Math.sin(this.time * 2.3) ** 2) + this.glitchKick);
 
     // dynamic resolution: back off if the device struggles
@@ -177,6 +207,12 @@ export class Gfx {
     }
   }
 
+  /** swap the whole look: 'normal' | 'retro' | 'noir' | 'comic' | 'crt' */
+  style(name) {
+    const m = { normal: [0, 1, 0.045], retro: [1, 4, 0], noir: [2, 1, 0.11], comic: [3, 1, 0.01], crt: [4, 1, 0.07] }[name] || [0, 1, 0.045];
+    this.styleName = name; this.u.uMode.value = m[0]; this.u.uPixel.value = m[1]; this.u.uGrain.value = m[2];
+    this.bloom.strength = name === 'comic' ? 0.2 : name === 'noir' ? 0.4 : 0.5;
+  }
   render() { this.composer.render(); }
 }
 const _v = new THREE.Vector3();
