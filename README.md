@@ -31,6 +31,19 @@ Barrer enemigos y limpiar manchas da **experiencia**: cada nivel suma un corazó
 
 Por el camino: 8 páginas del guion, 8 secretos en el almacén, unos 40 logros absurdos y un Narrador que comenta si cambias de pestaña, le quitas el sonido, te saltas los diálogos o juegas de madrugada.
 
+## El protagonista
+
+M0P-1 es un pequeño robot naranja generado, riggeado y animado con la API de [Tripo3D](https://www.tripo3d.ai/) (`src/assets/m0p1.glb`, 2,5 MB). Lleva diez animaciones de Tripo (reposo, andar, correr, salto, caída, voltereta, golpe…) que se mezclan según lo que hace el cuerpo físico, y las caras de siempre se dibujan sobre su visor. Para regenerarlo:
+
+```bash
+export TRIPO_API_KEY=...
+python3 tools/tripo.py model "..."      # el prompt exacto está en tools/tripo.py
+python3 tools/tripo.py rig <tarea>
+python3 tools/tripo.py retarget <rig> preset:idle preset:walk preset:run preset:jump preset:fall
+python3 tools/tripo.py wait <tarea> salida.glb
+blender -b --python tools/merge_clips.py -- animA.glb animB.glb src/assets/m0p1.glb
+```
+
 ## Jugar
 
 Con Docker:
@@ -72,8 +85,8 @@ Funciona en vertical y en horizontal. En móvil el juego baja solo la resolució
 
 - **three.js** para el render: materiales PBR, sombras, bloom, tone mapping ACES y un pase final propio con cinco estilos intercambiables en caliente (normal, 8 bits con tramado, cine negro, cómic con tinta y semitonos, CRT), además de aberración cromática, desenfoque de velocidad, grano y glitch.
 - Una capa **2D en canvas** a baja resolución con sprites de píxeles escritos a mano en el código, para el plataformas, el matamarcianos y el combate por turnos.
-- **Rapier** (WASM) para las físicas. M0P-1 es un ragdoll activo: un cuerpo que se mantiene de pie corrigiendo su velocidad angular, con cabeza y brazos colgando de articulaciones esféricas. Cuando algo le da un golpe se queda sin control, rueda como un muñeco y luego se levanta. El jefe arrastra una manguera hecha de la misma forma.
-- Todo es procedural. No hay modelos, texturas ni audio descargados: la geometría se genera en código, las texturas se pintan en canvas y la música y los efectos se sintetizan con Web Audio.
+- **Rapier** (WASM) para las físicas. M0P-1 es un ragdoll activo: un cuerpo que se mantiene de pie corrigiendo su velocidad angular, con la cabeza en una bisagra que el hueso de la cabeza del modelo copia encima de la animación. Cuando algo le da un golpe se queda sin control, rueda como un muñeco y luego se levanta. El jefe arrastra una manguera hecha de la misma forma.
+- Todo es procedural salvo el protagonista (un GLB de Tripo3D): el resto de la geometría se genera en código, las texturas se pintan en canvas y la música y los efectos se sintetizan con Web Audio.
 - La partida anterior se guarda en `localStorage` (solo cuántas veces has jugado y qué elegiste) para que el Narrador pueda echártelo en cara.
 - Rendimiento: las luces locales salen de un grupo fijo que las escenas se van prestando (cambiar el número de luces recompila todos los shaders), y al cargar se dibuja un fotograma con todo visible para compilar shaders y subir texturas detrás de la pantalla de carga. En móvil el bloom va a un cuarto de resolución y la resolución general se ajusta sola.
 - Ningún tramo puede dejarte atascado: si tardas demasiado en un tutorial, una puerta o un minijuego, el Narrador se impacienta y te lleva él.
@@ -81,12 +94,14 @@ Funciona en vertical y en horizontal. En móvil el juego baja solo la resolució
 
 ```
 src/
+  assets/   m0p1.glb (el protagonista, generado y animado con Tripo3D)
   engine/   gfx.js (render y postprocesado), physics.js, input.js, audio.js
   game/     robot.js, actors.js, world.js, ui.js, story.js (el guion entero),
             mini2d.js (plataformas, matamarcianos, combate por turnos), fight2d.js (la pelea),
             kart.js (la carrera), levels.js (almacén, oleadas, obstáculos, jefe final),
             combat.js (vida, derrotas, experiencia, enemigos, arma), extras.js (gags y peligros)
   main.js   bucle principal
+tools/      tripo.py (cliente de la API de Tripo3D), merge_clips.py (une las animaciones en Blender)
 ```
 
 ## Parámetros de URL

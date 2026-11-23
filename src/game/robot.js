@@ -1,5 +1,8 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { GROUPS, teleport } from '../engine/physics.js';
+import modelUrl from '../assets/m0p1.glb?url';
 
 export const MAT = {
   shell: new THREE.MeshPhysicalMaterial({ color: 0xc4c2bd, roughness: 0.34, clearcoat: 1, clearcoatRoughness: 0.12 }),
@@ -10,8 +13,74 @@ export const MAT = {
 };
 export const shadowed = (o) => { o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); return o; };
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
-const _q = new THREE.Quaternion(), _up = V(), _fw = V(), _ax = V(), _t = V(), _eul = new THREE.Euler();
+const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _q4 = new THREE.Quaternion(), _up = V(), _fw = V(), _ax = V(), _t = V(), _eul = new THREE.Euler();
 const UP = V(0, 1, 0);
+
+// --- the M0P-1 model: generated, rigged and animated with Tripo3D (see tools/tripo.py), clips merged in Blender ---
+const HEIGHT = 1.7; // world units, feet to antenna
+let TEMPLATE = null;
+
+/** load the model once, before the first Robot is built */
+export async function loadRobotModel() {
+  if (TEMPLATE) return TEMPLATE;
+  const gltf = await new GLTFLoader().loadAsync(modelUrl);
+  const root = gltf.scene; // bind pose, facing +X, feet at 0, about 1 unit tall
+  root.updateMatrixWorld(true);
+  let skinned = null;
+  root.traverse((o) => { if (o.isSkinnedMesh) skinned = o; });
+  const head = root.getObjectByName('Head');
+  TEMPLATE = { root, clips: gltf.animations, scale: HEIGHT / new THREE.Box3().setFromObject(root).max.y,
+    faceGeo: visorPatch(skinned, head), sockets: {} };
+  // hand sockets: children use the robot's axes (+Z forward) and world units, whatever the bone's own frame is
+  const turn = new THREE.Quaternion().setFromAxisAngle(V(0, 1, 0), Math.PI / 2);
+  for (const [k, n] of [['l', 'L_Hand'], ['r', 'R_Hand']]) {
+    const bone = root.getObjectByName(n);
+    TEMPLATE.sockets[k] = { bone: n, q: bone.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(turn), s: 1 / (bone.getWorldScale(V()).x * TEMPLATE.scale) };
+  }
+  return TEMPLATE;
+}
+
+/**
+ * A curved patch that hugs the black visor, built by casting rays at the mesh in its bind pose,
+ * returned in head-bone space so it follows every animation. The animated face is drawn on it.
+ */
+function visorPatch(mesh, headBone) {
+  const ray = new THREE.Raycaster(), NX = 14, NY = 8, pos = [], uv = [], idx = [], inv = headBone.matrixWorld.clone().invert();
+  const y0 = 0.5, y1 = 0.7, z0 = -0.2, z1 = 0.2; // visor area, model space (front is +X)
+  for (let j = 0; j <= NY; j++) for (let i = 0; i <= NX; i++) {
+    const u = i / NX, v = j / NY, y = y0 + (y1 - y0) * v, z = z1 + (z0 - z1) * u; // u runs left to right as seen from the front
+    ray.set(V(1, y, z), V(-1, 0, 0));
+    const hit = ray.intersectObject(mesh, false)[0], p = hit ? hit.point : V(0.27, y, z);
+    p.x += 0.006; p.applyMatrix4(inv); pos.push(p.x, p.y, p.z); uv.push(u, v);
+    if (i < NX && j < NY) { const a = j * (NX + 1) + i, b = a + NX + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+  return g;
+}
+
+function instanceModel() {
+  const T = TEMPLATE;
+  if (!T) throw new Error('loadRobotModel() must finish before building the robot');
+  const inner = cloneSkinned(T.root);
+  inner.rotation.y = -Math.PI / 2; // the model looks down +X; the robot looks down +Z
+  inner.scale.setScalar(T.scale);
+  const model = new THREE.Group(); model.add(inner);
+  inner.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.frustumCulled = false; } });
+  const mixer = new THREE.AnimationMixer(inner), actions = {};
+  for (const c of T.clips) actions[c.name] = mixer.clipAction(c);
+  for (const n of ['jump', 'dive', 'hurt', 'fall']) { actions[n].setLoop(THREE.LoopOnce); actions[n].clampWhenFinished = true; }
+  const bones = { head: inner.getObjectByName('Head'), lHand: inner.getObjectByName('L_Hand'), rHand: inner.getObjectByName('R_Hand') };
+  const sockets = {};
+  for (const [k, d] of Object.entries(T.sockets)) { const g = sockets[k] = new THREE.Group(); g.quaternion.copy(d.q); g.scale.setScalar(d.s); inner.getObjectByName(d.bone).add(g); }
+  return { model, mixer, actions, bones, sockets };
+}
+
+/** a posed, unanimated copy (the kart driver) */
+export function robotStatue(clip = 'idle', t = 0.5) {
+  const { model, mixer, actions } = instanceModel();
+  actions[clip].play(); mixer.setTime(t);
+  return model;
+}
 
 const FACES = {
   idle: (g) => { eye(g, 78, 64, 26, 34); eye(g, 178, 64, 26, 34); },
@@ -39,74 +108,38 @@ export class Robot {
     this.lastV = V(); this.onBonk = null; this.falls = 0; this.frozen = false; this.lookAt = null;
     this.holdT = 0; this.charge = 0; this.superT = 0; this.sq = 0; this.sqV = 0; this.st = 0; this.stV = 0; this.dustT = 0; this.dashSpeed = 15; this.dashes = 0;
 
-    // --- chassis ---
+    // --- chassis: the physics capsule carries the animated model (generated, rigged and animated with Tripo3D) ---
     const body = new THREE.Group();
-    const pts = [[0.0, -0.5], [0.2, -0.5], [0.33, -0.42], [0.4, -0.2], [0.42, 0.05], [0.38, 0.3], [0.28, 0.48], [0.14, 0.56], [0, 0.58]].map((p) => new THREE.Vector2(p[0], p[1]));
-    const shell = new THREE.Mesh(new THREE.LatheGeometry(new THREE.SplineCurve(pts).getPoints(28), 40), MAT.shell);
-    body.add(shell);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.415, 0.035, 12, 48), MAT.accent); band.rotation.x = Math.PI / 2; band.position.y = 0.02; body.add(band);
-    const wheel = this.wheel = new THREE.Mesh(new THREE.SphereGeometry(0.24, 24, 16), MAT.rubber); wheel.position.y = -0.4; body.add(wheel);
-    const skirt = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.04, 10, 32), MAT.steel); skirt.rotation.x = Math.PI / 2; skirt.position.y = -0.47; body.add(skirt);
-    this.coreMat = new THREE.MeshStandardMaterial({ color: 0x08222c, emissive: 0x39d8ff, emissiveIntensity: 2.4, roughness: 0.3 });
-    const core = new THREE.Mesh(new THREE.CircleGeometry(0.085, 24), this.coreMat); core.position.set(0, 0.2, 0.405); core.rotation.x = -0.12; body.add(core);
-    const coreRing = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.018, 8, 24), MAT.steel); coreRing.position.copy(core.position); coreRing.rotation.x = -0.12; body.add(coreRing);
-    for (const s of [-1, 1]) { const sh = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), MAT.steel); sh.position.set(s * 0.4, 0.3, 0); body.add(sh); }
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.1, 0.16, 16), MAT.steel); neck.position.y = 0.62; body.add(neck);
+    const { model, mixer, actions, bones, sockets } = instanceModel();
+    this.model = model; this.mixer = mixer; this.actions = actions; this.bones = bones; this.sockets = sockets; this.anim = null; this.upright = 0.8;
+    model.position.y = -0.62; body.add(model);
+    model.traverse((m) => { if (m.isMesh) this.skin = m.material; });
     scene.add(shadowed(body));
     this.chassis = physics.add({ mesh: body, pos: [pos.x, pos.y + 0.62, pos.z], shapes: [{ kind: 'capsule', size: [0.36, 0.25] }], density: 2.2, friction: 0.25, restitution: 0.05,
       group: GROUPS.robot, linDamp: 0.1, angDamp: 0.6, ccd: true, canSleep: false, tag: 'robot' });
 
-    // --- head ---
+    // --- head: still its own physics body, so it can turn and bobble; the head bone copies it every frame ---
     const head = new THREE.Group();
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.27, 32, 24), MAT.shell); skull.scale.set(1.28, 0.9, 1.05); head.add(skull);
-    const visor = new THREE.Mesh(new THREE.SphereGeometry(0.262, 32, 16, -Math.PI * 0.42 + Math.PI / 2, Math.PI * 0.84, Math.PI * 0.3, Math.PI * 0.36), MAT.glass);
-    visor.scale.set(1.3, 0.93, 1.1); visor.rotation.y = -Math.PI / 2 + Math.PI / 2; head.add(visor);
     this.faceCanvas = document.createElement('canvas'); this.faceCanvas.width = 256; this.faceCanvas.height = 128;
     this.faceTex = new THREE.CanvasTexture(this.faceCanvas); this.faceTex.colorSpace = THREE.SRGBColorSpace;
     this.faceMat = new THREE.MeshBasicMaterial({ map: this.faceTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
-    const face = new THREE.Mesh(new THREE.SphereGeometry(0.268, 24, 12, Math.PI / 2 - 0.62, 1.24, Math.PI / 2 - 0.3, 0.6), this.faceMat);
-    face.scale.set(1.3, 0.93, 1.1); head.add(face);
-    for (const s of [-1, 1]) { const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.06, 20), MAT.accent); ear.rotation.z = Math.PI / 2; ear.position.set(s * 0.345, 0, 0); head.add(ear); }
-    const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 6), MAT.steel); ant.position.set(0.12, 0.36, -0.05); head.add(ant);
-    this.tipMat = new THREE.MeshStandardMaterial({ color: 0x331100, emissive: 0xff7a1a, emissiveIntensity: 3 });
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.035, 12, 8), this.tipMat); tip.position.set(0.12, 0.52, -0.05); head.add(tip);
-    scene.add(shadowed(head)); face.castShadow = false;
+    const face = new THREE.Mesh(TEMPLATE.faceGeo, this.faceMat); face.renderOrder = 2; bones.head.add(face); // drawn on the visor
+    // the mop, in the right hand
+    const mop = new THREE.Group(); mop.rotation.x = -0.45;
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.0, 8), MAT.steel); stick.position.y = -0.2; mop.add(stick);
+    const tuft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.16, 0.14, 14), new THREE.MeshStandardMaterial({ color: 0x4fb7ff, roughness: 1 })); tuft.position.y = -0.72; mop.add(tuft);
+    sockets.r.add(shadowed(mop));
+    scene.add(head);
     this.head = physics.add({ mesh: head, pos: [pos.x, pos.y + 1.52, pos.z], shapes: [{ kind: 'ball', size: [0.25] }], density: 0.5, group: GROUPS.robot, angDamp: 2, linDamp: 0.2, canSleep: false });
     // a vertical hinge, not a ball joint: the head can turn to look at things but always stays on the neck,
     // even when the body is tumbling. The floppiness is added on top, visually, by a spring in update().
     physics.hinge(this.chassis, this.head, [0, 0.66, 0], [0, -0.24, 0], [0, 1, 0]);
     this.nod = new THREE.Vector2(); this.nodV = new THREE.Vector2(); this.lastHV = V();
-
-    // --- arms (pure ragdoll: they just hang and swing) ---
-    this.hands = [];
-    for (const s of [-1, 1]) {
-      const mk = (len, r, extra) => {
-        const g = new THREE.Group();
-        const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 6, 14), MAT.shell); g.add(m);
-        extra && extra(g);
-        scene.add(shadowed(g));
-        return g;
-      };
-      const upper = physics.add({ mesh: mk(0.22, 0.065), pos: [pos.x + s * 0.5, pos.y + 0.72, pos.z], shapes: [{ kind: 'capsule', size: [0.065, 0.11] }], density: 0.6, group: GROUPS.robot, angDamp: 1.5, linDamp: 0.3, canSleep: false });
-      physics.joint(this.chassis, upper, [s * 0.47, 0.3, 0], [0, 0.2, 0]);
-      const fore = physics.add({
-        mesh: mk(0.22, 0.06, (g) => {
-          const hand = new THREE.Mesh(new THREE.SphereGeometry(0.085, 16, 12), MAT.accent); hand.position.y = -0.2; g.add(hand);
-          const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), MAT.steel); elbow.position.y = 0.2; g.add(elbow);
-          if (s === 1) { // the mop
-            const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.0, 8), MAT.steel); stick.position.set(0, -0.3, 0.16); stick.rotation.x = -0.45; g.add(stick);
-            const mop = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.16, 0.14, 14), new THREE.MeshStandardMaterial({ color: 0x4fb7ff, roughness: 1 })); mop.position.set(0, -0.76, 0.38); g.add(mop);
-          }
-        }), pos: [pos.x + s * 0.5, pos.y + 0.32, pos.z], shapes: [{ kind: 'capsule', size: [0.06, 0.11] }], density: 0.5, group: GROUPS.robot, angDamp: 1.5, linDamp: 0.3, canSleep: false,
-      });
-      physics.joint(upper, fore, [0, -0.2, 0], [0, 0.2, 0]);
-      this.parts.push(upper, fore); this.hands.push(fore);
-    }
     this.parts.push(this.chassis, this.head);
 
     // marionette strings (hidden until the reveal)
     this.stringMat = new THREE.LineBasicMaterial({ color: 0xffd98a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-    this.strings = [this.head, this.hands[0], this.hands[1], this.chassis].map(() => {
+    this.strings = [0, 1, 2, 3].map(() => {
       const g = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
       const l = new THREE.Line(g, this.stringMat); l.frustumCulled = false; scene.add(l); return l;
     });
@@ -240,14 +273,49 @@ export class Robot {
     this.head.body.setAngvel({ x: av.x + _up.x * rate, y: av.y + _up.y * rate, z: av.z + _up.z * rate }, true);
   }
 
+  /** pick the clip for what the body is doing, then point the head bone where the physics head is looking */
+  _animate(dt) {
+    const v = this.chassis.body.linvel(), sp = Math.hypot(v.x, v.z), air = Math.abs(v.y) > 3;
+    let name = 'idle', rate = 1;
+    if (this.stun > 0) name = this.stun > 3 || this.game.falling ? 'fall' : 'hurt', rate = 1.6;
+    else if (this.superT > 0) name = 'dive', rate = 2.2;
+    else if (this.dashT > 0) name = 'run', rate = 2;
+    else if (air) name = 'jump', rate = 1.2;
+    else if (sp > 3.6) name = 'run', rate = THREE.MathUtils.clamp(sp / 6, 0.7, 1.4);
+    else if (sp > 0.35) name = 'walk', rate = THREE.MathUtils.clamp(sp / 2.2, 0.6, 1.6);
+    const next = this.actions[name];
+    if (this.anim !== next) {
+      next.reset().play();
+      if (this.anim) next.crossFadeFrom(this.anim, name === 'dive' || name === 'hurt' ? 0.08 : 0.2, false);
+      this.anim = next;
+    }
+    next.timeScale = rate;
+    this.mixer.update(dt);
+    // the capsule leans into the motion (it used to be a wheel); legs and the run cycle already lean, so stand
+    // the model mostly back up. When stunned it tumbles with the body.
+    this.upright += ((this.stun > 0 ? 0 : 0.8) - this.upright) * Math.min(1, dt * 8);
+    _up.set(0, 1, 0).applyQuaternion(this.chassis.mesh.quaternion);
+    _q.setFromUnitVectors(_up, UP); // world tilt that would undo the lean
+    _q2.copy(this.chassis.mesh.quaternion).invert().multiply(_q).multiply(this.chassis.mesh.quaternion); // same, in body space
+    this.model.quaternion.identity().slerp(_q2, this.upright);
+    this.model.position.set(0, -0.62, 0).applyQuaternion(this.model.quaternion); // pivot on the body's centre, keeping the feet under it
+    // the head bone takes the turn (and bobble) of the physics head, relative to the body, on top of the animation
+    const hb = this.bones.head;
+    _q.copy(this.chassis.mesh.quaternion).invert().multiply(this.head.mesh.quaternion); // head relative to body
+    _eul.setFromQuaternion(_q, 'YXZ'); _eul.y = THREE.MathUtils.clamp(_eul.y, -1.1, 1.1); _eul.x = THREE.MathUtils.clamp(_eul.x, -0.5, 0.5); _eul.z = THREE.MathUtils.clamp(_eul.z, -0.5, 0.5);
+    _q.setFromEuler(_eul);
+    _q2.copy(this.chassis.mesh.quaternion).multiply(_q).multiply(_q3.copy(this.chassis.mesh.quaternion).invert()); // as a world-space turn
+    hb.parent.getWorldQuaternion(_q3);
+    hb.getWorldQuaternion(_q4).premultiply(_q2);
+    hb.quaternion.copy(_q3.invert().multiply(_q4));
+  }
+
   update(dt, time) {
-    this.wheel.rotation.x += this.speed * dt * 4;
     // squash & stretch springs
     this.sqV += (-this.sq * 220 - this.sqV * 13) * dt; this.sq += this.sqV * dt;
     this.stV += (-this.st * 200 - this.stV * 12) * dt; this.st += this.stV * dt;
     const sq = THREE.MathUtils.clamp(this.sq, -0.4, 0.5), st = THREE.MathUtils.clamp(-this.st, -0.3, 0.6);
     this.chassis.mesh.scale.set(1 + sq * 0.5 - st * 0.35, 1 - sq - st * 0.25, 1 + sq * 0.5 + st);
-    this.head.mesh.scale.setScalar(1 + sq * 0.25);
     // bobble-head: a spring tips the head away from sudden changes of speed, pivoting on the neck
     if (dt > 0) {
       const v = this.chassis.body.linvel(), ax = (v.x - this.lastHV.x) / dt, az = (v.z - this.lastHV.z) / dt; this.lastHV.set(v.x, v.y, v.z);
@@ -260,23 +328,24 @@ export class Robot {
       _t.copy(hm.position).sub(_ax).applyQuaternion(_q); hm.position.copy(_ax).add(_t);
       hm.quaternion.premultiply(_q);
     }
-    this.coreMat.emissive.setHex(this.charge >= 1 ? 0xffffff : 0x39d8ff);
     // wheel dust
     this.dustT -= dt;
     if (this.dustT < 0 && this.speed > 3.5 && this.stun <= 0 && Math.abs(this.chassis.body.linvel().y) < 1) {
       this.dustT = 0.09; const p = this.position;
       this.game.gfx.particles.burst(V(p.x, p.y + 0.08, p.z), 1, { color: 0x8890a0, speed: 0.8, life: 0.5, size: 0.28, gravity: 1.5, up: 0.3, drag: 3 });
     }
-    this.coreMat.emissiveIntensity = 2 + Math.sin(time * 3) * 0.6 + this.charge * 6;
+    this.skin.emissive.setHex(this.charge >= 1 ? 0xffffff : 0x39d8ff);
+    this.skin.emissiveIntensity = this.charge > 0 ? this.charge * (0.35 + Math.sin(time * 30) * 0.1) : 0;
+    this._animate(dt);
     if (this.expr === 'idle' || this.expr === 'blink') {
       this.blinkT -= dt;
       if (this.blinkT < 0 && this.expr === 'idle') { this.expr = 'blink'; this._draw('blink'); this.blinkT = 0.12; }
       else if (this.blinkT < 0) { this.expr = 'idle'; this._draw('idle'); this.blinkT = 1.5 + Math.random() * 3; }
     }
     if (this.stringMat.opacity > 0.001) {
-      const src = [this.head, this.hands[0], this.hands[1], this.chassis];
+      const src = [this.bones.head, this.bones.lHand, this.bones.rHand, this.chassis.mesh];
       this.strings.forEach((l, i) => {
-        const p = src[i].mesh.position, a = l.geometry.attributes.position.array;
+        const p = src[i].getWorldPosition(_t), a = l.geometry.attributes.position.array;
         a[0] = p.x; a[1] = p.y; a[2] = p.z; a[3] = p.x * 0.6 + this.pos.x * 0.4; a[4] = p.y + this.stringTop; a[5] = p.z;
         l.geometry.attributes.position.needsUpdate = true;
       });

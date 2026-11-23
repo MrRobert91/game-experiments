@@ -10,7 +10,7 @@ const SIGNS = ['¡M0P-1!', '★★★★★', '¡BUUU!', 'FREGONA ♥', '¿5★?
 
 class Fighter {
   constructor(x, floor, face, robot) {
-    const rel = robot ? [[0, -40], [0, -28], [0, -15], [-7, -23], [7, -23], [-2.5, -4], [2.5, -4]] : [[0, -42], [0, -30], [0, -18], [-7, -25], [7, -25], [-5, -2], [5, -2]];
+    const rel = robot ? [[0, -40], [0, -28], [0, -15], [-7, -23], [7, -23], [-3.5, -3], [3.5, -3]] : [[0, -42], [0, -30], [0, -18], [-7, -25], [7, -25], [-5, -2], [5, -2]];
     this.p = rel.map(([dx, dy]) => [x + dx * S, floor + dy * S]); this.q = this.p.map((a) => [...a]);
     this.L = STICKS.map(([a, b]) => Math.hypot(this.p[a][0] - this.p[b][0], this.p[a][1] - this.p[b][1]));
     Object.assign(this, { face, robot, hp: 100, max: 100, ko: 0, air: 0, atk: null, cd: 0, block: 0, walk: 0, charge: 0, trail: [], wallCd: 0, wins: 0, blink: 2 });
@@ -71,11 +71,11 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
     const hip = f.p[2], fl = floor(), grounded = Math.max(f.p[2][1], f.p[5][1], f.p[6][1]) >= fl - 2; // lying down counts too, so a fallen fighter gets back up
     if (Math.abs(mx) > 0.15 && !(f.atk && f.atk.heavy)) { const s = mx * 38 * H_STEP * (grounded ? 1 : 0.7); for (const i of [0, 1, 2, 5, 6]) f.p[i][0] += s; f.walk += H_STEP * 9 * Math.abs(mx); }
     const air = f.air > 0 || !grounded;
-    if (!air) { for (const i of [0, 1, 2]) f.q[i][1] = f.p[i][1]; spring(f, 2, hip[0], fl - (f.robot ? 11 : 16) * S, f.ko > -0.6 ? 0.08 : 0.3); } // standing: no vertical drift, hip at standing height (slower while getting up)
+    if (!air) { for (const i of [0, 1, 2]) f.q[i][1] = f.p[i][1]; spring(f, 2, hip[0], fl - (f.robot ? 12 : 16) * S, f.ko > -0.6 ? 0.08 : 0.3); } // standing: no vertical drift, hip at standing height (slower while getting up)
     if (f.ko > -0.6) f.ko -= H_STEP;
     spring(f, 1, hip[0], hip[1] - 13 * S, 0.4); spring(f, 0, hip[0] + f.face * S, hip[1] - 25 * S, 0.4);
-    const step = Math.sin(f.walk) * (Math.abs(mx) > 0.15 && !f.robot ? 4 * S : 0);
-    if (!air) { spring(f, 5, hip[0] - (f.robot ? 2.5 : 5) * S + step, fl, 0.2); spring(f, 6, hip[0] + (f.robot ? 2.5 : 5) * S - step, fl, 0.2); }
+    const step = Math.sin(f.walk) * (Math.abs(mx) > 0.15 ? (f.robot ? 3 : 4) * S : 0);
+    if (!air) { spring(f, 5, hip[0] - (f.robot ? 3.5 : 5) * S + step, fl, 0.2); spring(f, 6, hip[0] + (f.robot ? 3.5 : 5) * S - step, fl, 0.2); }
     const ch = f.p[1], front = f.face > 0 ? 4 : 3, back = f.face > 0 ? 3 : 4, k = f.atk;
     if (k && k.t < k.wind) spring(f, front, ch[0] - f.face * (k.heavy ? 9 : 4) * S, ch[1] - (k.heavy ? 8 : 2) * S, 0.3); // wind-up: pull the arm back
     else if (k && k.t < k.wind + k.strike) spring(f, front, ch[0] + f.face * (k.heavy ? 20 : 16) * S, ch[1] - (k.heavy ? 6 : 1) * S, 0.55);
@@ -108,28 +108,34 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
 
   // ---------- drawing ----------
   const ellipse = (g, x, y, rx, ry, rot, fill, stroke) => { g.save(); g.translate(x, y); g.rotate(rot); g.beginPath(); g.ellipse(0, 0, rx, ry, 0, 0, 7); g.fillStyle = fill; g.fill(); if (stroke) { g.strokeStyle = stroke; g.lineWidth = 1; g.stroke(); } g.restore(); };
-  const drawRobot = (g, f) => {
-    const P = f.p, fl = f.ko > 0 && Math.floor(t * 20) % 2, white = fl ? '#ffffff' : '#e8e6e0';
+  const drawRobot = (g, f) => { // the orange M0P-1: big round helmet, dark visor with two round cyan eyes, grey ear discs, antenna, short legs
+    const P = f.p, fl = f.ko > 0 && Math.floor(t * 20) % 2, orange = fl ? '#ffffff' : '#f07a2a', dark = '#b0481a', grey = '#c0c4cc';
     const ang = Math.atan2(P[1][0] - P[2][0], -(P[1][1] - P[2][1]));
-    const wx = (P[5][0] + P[6][0]) / 2, wy = (P[5][1] + P[6][1]) / 2;
-    g.fillStyle = '#14161b'; g.beginPath(); g.arc(wx, wy - 3 * S, 3.6 * S, 0, 7); g.fill(); // the wheel
-    g.strokeStyle = '#6a7080'; g.lineWidth = 1; g.beginPath(); for (let k = 0; k < 3; k++) { const a = f.walk + k * 2.09; g.moveTo(wx, wy - 3 * S); g.lineTo(wx + Math.cos(a) * 3 * S, wy - 3 * S + Math.sin(a) * 3 * S); } g.stroke();
+    g.lineCap = 'round';
+    for (const k of [5, 6]) { // legs and feet
+      g.strokeStyle = '#e2552a'; g.lineWidth = 3 * S; g.beginPath(); g.moveTo(P[2][0] + (k === 5 ? -2 : 2) * S, P[2][1]); g.lineTo(P[k][0], P[k][1] - 1.5 * S); g.stroke();
+      g.fillStyle = '#c8402a'; g.beginPath(); g.ellipse(P[k][0] + f.face * S, P[k][1] - 1.2 * S, 3 * S, 1.6 * S, 0, 0, 7); g.fill();
+    }
     const back = f.face > 0 ? 3 : 4, front = f.face > 0 ? 4 : 3;
-    const arm = (h) => { g.strokeStyle = white; g.lineWidth = 2.4 * S; g.lineCap = 'round'; g.beginPath(); g.moveTo(P[1][0], P[1][1] + 2 * S); g.lineTo(P[h][0], P[h][1]); g.stroke(); g.fillStyle = '#ff7a1a'; g.beginPath(); g.arc(P[h][0], P[h][1], 2 * S, 0, 7); g.fill(); };
+    const arm = (h) => { g.strokeStyle = orange; g.lineWidth = 2.4 * S; g.beginPath(); g.moveTo(P[1][0], P[1][1] + 1.5 * S); g.lineTo(P[h][0], P[h][1]); g.stroke(); g.fillStyle = grey; g.beginPath(); g.arc(P[h][0], P[h][1], 1.9 * S, 0, 7); g.fill(); };
     arm(back);
-    const bx = (P[1][0] + P[2][0]) / 2, by = (P[1][1] + P[2][1]) / 2 + 2 * S;
-    ellipse(g, bx, by, 7 * S, 9.5 * S, ang, white, '#9a9890'); // egg body
-    g.save(); g.translate(bx, by); g.rotate(ang); g.fillStyle = '#ff7a1a'; g.fillRect(-7 * S, -1 * S, 14 * S, 2 * S); g.fillStyle = '#39d8ff'; g.beginPath(); g.arc(f.face * 2 * S, -4 * S, 1.3 * S, 0, 7); g.fill(); g.restore();
-    // head: white shell, dark visor, cyan eyes, orange ears, antenna
-    const hx = P[0][0], hy = P[0][1];
-    g.strokeStyle = '#aab0ba'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(hx + 2 * S, hy - 5 * S); g.lineTo(hx + 3 * S, hy - 11 * S); g.stroke();
-    g.fillStyle = '#ff7a1a'; g.beginPath(); g.arc(hx + 3 * S, hy - 11.5 * S, 1.1 * S, 0, 7); g.fill();
-    ellipse(g, hx, hy, 8 * S, 6.2 * S, ang * 0.5, white, '#9a9890');
-    g.fillStyle = '#ff7a1a'; g.beginPath(); g.arc(hx - f.face * 7.5 * S, hy, 1.8 * S, 0, 7); g.fill();
-    g.fillStyle = '#05070a'; g.beginPath(); g.ellipse(hx + f.face * 2 * S, hy + 0.3 * S, 5.2 * S, 3.6 * S, 0, 0, 7); g.fill();
+    const bx = (P[1][0] + P[2][0]) / 2, by = (P[1][1] + P[2][1]) / 2 + 1.5 * S;
+    ellipse(g, bx, by, 6 * S, 7.5 * S, ang, orange, dark); // small body
+    g.save(); g.translate(bx, by); g.rotate(ang); g.fillStyle = '#2a3a6a'; g.fillRect(-4.5 * S, -7 * S, 9 * S, 2.4 * S); g.fillStyle = grey; g.fillRect(-5 * S, -4.4 * S, 10 * S, 1.2 * S); g.restore();
+    // the helmet: bigger than the body, like the 3D model
+    const hx = P[0][0], hy = P[0][1] - 2 * S;
+    g.strokeStyle = '#8a8f98'; g.lineWidth = 0.9; g.beginPath(); g.moveTo(hx - f.face * 4 * S, hy - 7 * S); g.lineTo(hx - f.face * 6 * S, hy - 13 * S); g.stroke();
+    g.fillStyle = '#ff8a2a'; g.beginPath(); g.arc(hx - f.face * 6 * S, hy - 13.5 * S, 1.6 * S, 0, 7); g.fill();
+    for (const sx of [-1, 1]) { g.fillStyle = '#9aa0aa'; g.beginPath(); g.arc(hx + sx * 9 * S, hy + 0.5 * S, 2.3 * S, 0, 7); g.fill(); }
+    g.fillStyle = orange; g.beginPath(); g.arc(hx, hy, 9 * S, 0, 7); g.fill(); g.strokeStyle = dark; g.lineWidth = 1; g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.ellipse(hx - 3 * S, hy - 5.5 * S, 3 * S, 1.4 * S, -0.4, 0, 7); g.fill();
+    g.fillStyle = '#0a0c12'; g.beginPath(); g.ellipse(hx + f.face * 1.2 * S, hy + 0.8 * S, 6.6 * S, 5.2 * S, 0, 0, 7); g.fill();
     const blink = f.blink < 0.12; if (f.blink < 0) f.blink = 2 + Math.random() * 2;
-    g.fillStyle = f.ko > 0 ? '#ff6a4d' : '#7fe9ff';
-    for (const ex of [0.5, 3.6]) { if (f.ko > 0) { g.fillRect(hx + f.face * ex * S - 1, hy - 0.5, 2.4, 1); } else g.fillRect(hx + f.face * ex * S - 1, hy - (blink ? 0 : 1.5 * S) + 0.3, 2, blink ? 1 : 3 * S); }
+    for (const ex of [-1.6, 2.6]) {
+      const x = hx + f.face * (ex + 0.6) * S, y = hy + 0.6 * S;
+      if (f.ko > 0) { g.strokeStyle = '#ff6a4d'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x - 1.3 * S, y - 1.3 * S); g.lineTo(x + 1.3 * S, y + 1.3 * S); g.moveTo(x + 1.3 * S, y - 1.3 * S); g.lineTo(x - 1.3 * S, y + 1.3 * S); g.stroke(); }
+      else { g.fillStyle = '#9ff2ff'; g.shadowColor = '#6fe3ff'; g.shadowBlur = 4; g.beginPath(); g.ellipse(x, y, 1.7 * S, blink ? 0.3 * S : 1.9 * S, 0, 0, 7); g.fill(); g.shadowBlur = 0; }
+    }
     arm(front);
     const k = f.atk; // the mop comes out for the heavy swing
     if (k && k.heavy) { const h = P[front], dx = f.face, mx = h[0] + dx * 13 * S, my = h[1] - 6 * S; g.strokeStyle = '#aab0ba'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(h[0] - dx * 4 * S, h[1] + 3 * S); g.lineTo(mx, my); g.stroke(); g.fillStyle = '#4fb7ff'; g.beginPath(); g.ellipse(mx, my, 3 * S, 2 * S, -dx * 0.5, 0, 7); g.fill(); }

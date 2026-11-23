@@ -3,7 +3,7 @@
 // hold the button while turning to drift and let go for a mini-turbo. Three laps; lose and it is re-shot.
 import * as THREE from 'three';
 import { canvasTex, textTex, noiseTex } from '../engine/gfx.js';
-import { MAT, shadowed } from './robot.js';
+import { MAT, shadowed, robotStatue } from './robot.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export const KART = { x: -300, z: 0 };
@@ -45,19 +45,9 @@ function kartMesh(color, number, driver) {
   g.add(driver); driver.position.set(0, 0.62, -0.25);
   return shadowed(g);
 }
-function robotDriver() { // a small M0P-1: white egg, orange band, dark visor with cyan eyes, antenna
-  const d = new THREE.Group();
-  const pts = [[0, -0.32], [0.2, -0.32], [0.3, -0.18], [0.33, 0.05], [0.3, 0.24], [0.2, 0.38], [0, 0.42]].map((p) => new THREE.Vector2(p[0], p[1]));
-  const b = new THREE.Mesh(new THREE.LatheGeometry(pts, 24), MAT.shell); b.position.y = 0.35; d.add(b);
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.035, 8, 28), MAT.accent); band.rotation.x = Math.PI / 2; band.position.y = 0.36; d.add(band);
-  const h = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 16), MAT.shell); h.scale.set(1.28, 0.9, 1.05); h.position.y = 0.98; d.add(h);
-  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.262, 24, 12, Math.PI / 2 - 0.9, 1.8, Math.PI * 0.32, Math.PI * 0.34), MAT.glass); visor.scale.set(1.3, 0.93, 1.1); visor.position.y = 0.98; d.add(visor);
-  const eyes = new THREE.MeshStandardMaterial({ color: 0, emissive: 0x7fe9ff, emissiveIntensity: 2.5 });
-  for (const x of [-0.1, 0.1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), eyes); e.scale.set(1, 1.3, 0.5); e.position.set(x, 1.0, 0.28); d.add(e); }
-  for (const s of [-1, 1]) { const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.06, 16), MAT.accent); ear.rotation.z = Math.PI / 2; ear.position.set(s * 0.35, 0.98, 0); d.add(ear); }
-  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.28, 6), MAT.steel); ant.position.set(0.12, 1.32, -0.05); d.add(ant);
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshStandardMaterial({ color: 0x331100, emissive: 0xff7a1a, emissiveIntensity: 3 })); tip.position.set(0.12, 1.47, -0.05); d.add(tip);
-  for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.3, 4, 8), MAT.shell); arm.position.set(s * 0.3, 0.5, 0.28); arm.rotation.x = -1.1; d.add(arm); }
+function robotDriver() {
+  const d = new THREE.Group(), m = robotStatue('idle', 1.2); // the real model, legs tucked into the cockpit
+  m.scale.setScalar(0.85); m.position.y = -0.3; d.add(m);
   return d;
 }
 function producerDriver() {
