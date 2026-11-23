@@ -2,7 +2,7 @@
 // hold the button to drift and let go for a mini-turbo. Three laps; lose and the race is re-shot.
 import * as THREE from 'three';
 import { canvasTex, textTex, noiseTex } from '../engine/gfx.js';
-import { MAT, shadowed } from './robot.js';
+import { MAT, shadowed, robotStatue } from './robot.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export const KART = { x: -260, z: 0 };
@@ -22,11 +22,8 @@ function kartMesh(color, driver) {
   return shadowed(g);
 }
 function robotDriver() {
-  const d = new THREE.Group();
-  const b = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 14), MAT.shell); b.scale.y = 1.1; b.position.y = 0.3; d.add(b);
-  const h = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 14), MAT.shell); h.scale.set(1.25, 0.9, 1); h.position.y = 0.95; d.add(h);
-  const v = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.1), new THREE.MeshStandardMaterial({ color: 0x020406, emissive: 0x39d8ff, emissiveIntensity: 1.2 })); v.position.set(0, 0.97, 0.28); d.add(v);
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.04, 8, 24), MAT.accent); band.rotation.x = Math.PI / 2; band.position.y = 0.3; d.add(band);
+  const d = new THREE.Group(), m = robotStatue('idle', 1.2); // the real model, legs tucked into the cockpit
+  m.scale.setScalar(0.85); m.position.y = -0.3; d.add(m);
   return d;
 }
 function producerDriver() {

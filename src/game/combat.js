@@ -223,7 +223,7 @@ export function installWeapon(game) {
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.34), new THREE.MeshPhysicalMaterial({ color: 0x29d3ff, roughness: 0.3, clearcoat: 1 })); gun.add(body);
   const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.26, 12), new THREE.MeshPhysicalMaterial({ color: 0xff8fc7, roughness: 0.2, transparent: true, opacity: 0.8 })); tank.position.set(0, 0.2, -0.05); gun.add(tank);
   const nz = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.2, 8), MAT.steel); nz.rotation.x = Math.PI / 2; nz.position.z = 0.26; gun.add(nz);
-  gun.position.set(0, -0.26, 0.1); gun.visible = false; r.hands[0].mesh.add(shadowed(gun));
+  gun.position.set(0, -0.04, 0.12); gun.visible = false; r.sockets.l.add(shadowed(gun));
   let cd = 0;
   P.giveWeapon = () => { P.weapon = true; gun.visible = true; };
   game.tickers.add((dt) => {

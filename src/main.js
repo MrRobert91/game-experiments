@@ -4,7 +4,7 @@ import { Physics } from './engine/physics.js';
 import { Input } from './engine/input.js';
 import { Audio } from './engine/audio.js';
 import { UI } from './game/ui.js';
-import { Robot } from './game/robot.js';
+import { Robot, loadRobotModel } from './game/robot.js';
 import { buildWorld, ARENA_Y } from './game/world.js';
 import { spawnDebris, Pelusa, Boss, makePiano } from './game/actors.js';
 import { makeBarrels, makeLasers, makeStealth, makeWords, Pages } from './game/extras.js';
@@ -18,7 +18,7 @@ const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 class Game {
   async init() {
     this.gfx = new Gfx(document.getElementById('scene'));
-    this.physics = await Physics.create();
+    [this.physics] = await Promise.all([Physics.create(), loadRobotModel()]);
     this.input = new Input();
     this.audio = new Audio();
     this.ui = new UI(this);
