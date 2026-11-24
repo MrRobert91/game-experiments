@@ -235,7 +235,7 @@ export function bridgeHazards(game, A, { gloves = [-33, -46], conveyor = [-40, -
     arrows.offset.x -= dt * 0.9;
     if (p.z < conveyor[0] && p.z > conveyor[1] && Math.abs(p.x) < 2.3 && p.y < A + 1.2 && r.dashT <= 0) { const b = r.chassis.body, t = b.translation(); b.setTranslation({ x: t.x, y: t.y, z: t.z + 2.6 * dt }, true); }
     ballT -= dt;
-    if (ballT <= 0 && p.z < -36 && p.z > ballsFrom + 6) { // never right at the end you are heading for
+    if (ballT <= 0 && p.z < -30 && p.z > ballsFrom + 5) { // never right at the end you are heading for
       ballT = 2.8; lane = -lane;
       const m = new THREE.Mesh(new THREE.SphereGeometry(0.6, 20, 16), new THREE.MeshPhysicalMaterial({ color: [0x29d3ff, 0xff8fc7, 0x7dff9a][items.length % 3], roughness: 0.15, clearcoat: 1 })); m.castShadow = true; scene.add(m);
       const e = game.physics.add({ mesh: m, pos: [lane * 1.3, A + 0.7, ballsFrom], /* alternate lanes: one side is always free */ shapes: [{ kind: 'ball', size: [0.6] }], density: 3, friction: 0.4, restitution: 0.2, linDamp: 0.02, angDamp: 0.05 });

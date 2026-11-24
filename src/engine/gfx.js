@@ -188,7 +188,7 @@ export class Gfx {
     this.time += rawDt;
     const cam = this.cam, camera = this.camera;
     // portrait: pull back so the stage still fits
-    const asp = camera.aspect, pull = asp < 1 ? 1 + (1 - asp) * 1.1 : 1;
+    const asp = camera.aspect, pull = asp < 1 && !cam.noPull ? 1 + (1 - asp) * 1.1 : 1; // noPull: chase cams keep their distance and widen the lens instead
     const k = cam.snap ? 1 : 1 - Math.exp(-rawDt * cam.stiff);
     cam.curOffset.lerp(cam.offset, cam.snap ? 1 : 1 - Math.exp(-rawDt * (cam.offK || 1.6))); // offK: how fast the camera swings to a new angle (chase cams want it high)
     _v.copy(cam.target).addScaledVector(cam.curOffset, pull);
