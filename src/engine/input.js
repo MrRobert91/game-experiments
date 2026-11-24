@@ -31,13 +31,14 @@ export class Input {
     this.restStick();
     addEventListener('resize', () => { if (this.stick.id === null) this.restStick(); });
 
-    const canvas = document.getElementById('scene');
-    canvas.addEventListener('pointerdown', (e) => {
+    const grab = (e) => {
       if (e.pointerType === 'mouse') return;
       if (this.stick.id !== null) return;
       this.stick.id = e.pointerId; this.stick.ox = e.clientX; this.stick.oy = e.clientY; this.stick.x = this.stick.y = 0;
       place(e.clientX, e.clientY); stickEl.classList.remove('rest'); stickEl.classList.add('on');
-    });
+    };
+    // the 2D minigames draw on #c2d, which covers #scene: the stick has to listen on both
+    for (const id of ['scene', 'c2d']) document.getElementById(id).addEventListener('pointerdown', grab);
     addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.stick.id) return;
       let dx = e.clientX - this.stick.ox, dy = e.clientY - this.stick.oy;
