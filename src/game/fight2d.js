@@ -1,6 +1,7 @@
 // El Crítico: a 2D fighting game with physics, best of three rounds. Both fighters are verlet ragdolls
 // (points + sticks) that a few springs keep standing; hits throw real impulses, heavy blows launch the other
-// fighter into the ropes. Stick or A/D: walk. W / up: jump. Button: tap to punch, hold and release for a mop swing.
+// fighter into the ropes. Stick or A/D: walk. Stick up (or diagonally up) without the button: jump that way.
+// Button: tap to punch, hold and release for a mop swing; both go wherever the stick points (up: uppercut, down: spike).
 
 const S = 1.45, HZ = 60, H_STEP = 1 / HZ, G = 900 * H_STEP * H_STEP; // fixed 60 Hz steps; velocities in px per step
 const STICKS = [[0, 1], [1, 2], [1, 3], [1, 4], [2, 5], [2, 6], [0, 2], [5, 6]];
@@ -34,13 +35,15 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
   };
   round = 1; setup(false);
   ui.objective('Gana dos asaltos a El Crítico'); ui.bark('narrador', 'El Crítico. Ha venido a ponerle nota al juego. Al mejor de tres asaltos.');
-  ui.bark('sistema', 'Toca: puñetazo. Mantén y suelta: fregonazo. W, flecha arriba o stick arriba: saltar.');
-  let heldT = 0, wasHeld = false, jumpLatch = false, botT = 0;
-  mini.dbgFight = () => ({ hipY: me.p[2][1], floor: floor(), wins: [me.wins, foe.wins], intro, hp: [Math.round(me.hp), Math.round(foe.hp)], round, over, ko: [me.ko > 0, foe.ko > 0], x: [Math.round(me.x), Math.round(foe.x)] });
+  ui.bark('sistema', 'Toca: puñetazo. Mantén y suelta: fregonazo. Los golpes van hacia donde apuntes con el stick. Stick arriba sin el botón: saltar; en diagonal, salto en diagonal.');
+  let heldT = 0, wasHeld = false, jumpLatch = false, jumpWait = -1, jumpQ = false, botT = 0;
+  mini.dbgFight = () => ({ hipY: me.p[2][1], floor: floor(), wins: [me.wins, foe.wins], intro, hp: [Math.round(me.hp), Math.round(foe.hp)], round, over, ko: [me.ko > 0, foe.ko > 0], x: [Math.round(me.x), Math.round(foe.x)], aim: me.atk ? [+me.atk.ax.toFixed(2), +me.atk.ay.toFixed(2)] : null });
 
   const burst = (x, y, n, col, sp = 2.5) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, s = sp * (0.4 + Math.random()); sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1, life: 0.4 + Math.random() * 0.3, col, size: 1 + Math.random() * 2 }); } };
   // attacks have a wind-up you can see, a strike, and a recovery
-  const attack = (f, heavy) => { if (f.cd > 0 || f.ko > 0 || f.atk) return; f.atk = { heavy, t: 0, wind: heavy ? 0.32 : 0.14, strike: heavy ? 0.16 : 0.11, rec: heavy ? 0.28 : 0.16, hit: false }; f.cd = heavy ? 0.95 : 0.5; };
+  // aim: a unit vector; a stick left centred (or a bot) punches straight ahead
+  const aimOf = (f, x, y) => { const l = Math.hypot(x, y); return l < 0.35 ? [f.face, 0] : [x / l, y / l]; };
+  const attack = (f, heavy, aim = [f.face, 0]) => { if (f.cd > 0 || f.ko > 0 || f.atk) return; f.atk = { heavy, ax: aim[0], ay: aim[1], t: 0, wind: heavy ? 0.32 : 0.14, strike: heavy ? 0.16 : 0.11, rec: heavy ? 0.28 : 0.16, hit: false }; f.cd = heavy ? 0.95 : 0.5; };
   const strikeHand = (f) => f.p[f.face > 0 ? 4 : 3];
   const hitCheck = (a, b) => {
     const k = a.atk; if (!k || k.hit || k.t < k.wind || k.t > k.wind + k.strike) return;
@@ -52,8 +55,10 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
       const blocked = b.block > 0 && b.ko <= 0 && Math.sign(a.x - b.x) === b.face;
       const dmg = Math.round((k.heavy ? 18 : 7) * (blocked ? 0.3 : 1));
       b.hp = Math.max(0, b.hp - dmg);
-      if (k.heavy && !blocked) { b.push(a.face * 6.5, -4.2); b.ko = 1.1; game.hitstop(0.14); mini.shake = 1.3; flash = 0.5; audio.thud(1.5); crowdHype = 1.5; mini.text(hand[0], hand[1] - 10, '¡FREGONAZO!', '#6fe3ff'); }
-      else { b.push(a.face * (blocked ? 0.8 : 2.4), -1.2); game.hitstop(0.06); mini.shake = 0.6; audio.clank(0.9); crowdHype = Math.max(crowdHype, 0.6); }
+      // the blow throws the other fighter along the aim: an uppercut launches, a spike slams down (and bounces off the floor)
+      const air = Math.max(b.p[2][1], b.p[5][1], b.p[6][1]) < floor() - 3, lift = (v) => (v > 0 && !air ? -1.2 : v);
+      if (k.heavy && !blocked) { b.push(k.ax * 6.5, lift(k.ay * 6.5 - 4.2 * (1 - Math.abs(k.ay)))); b.ko = 1.1; game.hitstop(0.14); mini.shake = 1.3; flash = 0.5; audio.thud(1.5); crowdHype = 1.5; mini.text(hand[0], hand[1] - 10, '¡FREGONAZO!', '#6fe3ff'); }
+      else { b.push(k.ax * (blocked ? 0.8 : 2.4), lift(k.ay * (blocked ? 0.8 : 2.8) - 1.2 * (1 - Math.abs(k.ay)))); game.hitstop(0.06); mini.shake = 0.6; audio.clank(0.9); crowdHype = Math.max(crowdHype, 0.6); }
       if (blocked) mini.text(b.x, b.p[0][1] - 14, '¡BLOQUEO!', '#9fefff');
       else mini.text(b.x, b.p[0][1] - 16, b === foe ? QUIPS_HURT[(Math.random() * QUIPS_HURT.length) | 0] : QUIPS_HIT[(Math.random() * QUIPS_HIT.length) | 0], b === foe ? '#ffd24a' : '#ff6a8a');
       burst(hand[0], hand[1], k.heavy ? 26 : 12, k.heavy ? '#ffffff' : '#ffd24a', k.heavy ? 4 : 2.5);
@@ -64,7 +69,7 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
   };
   // pose springs move a point and its previous position together: they shape the body without pumping velocity into it
   const spring = (f, i, tx, ty, k) => { const dx = (tx - f.p[i][0]) * k, dy = (ty - f.p[i][1]) * k; f.p[i][0] += dx; f.p[i][1] += dy; f.q[i][0] += dx; f.q[i][1] += dy; };
-  const control = (f, mx, jump) => {
+  const control = (f, mx, jump, jdx = 0) => {
     f.cd -= H_STEP; f.block -= H_STEP; f.air -= H_STEP; f.wallCd -= H_STEP; f.blink -= H_STEP;
     if (f.atk) { f.atk.t += H_STEP; if (f.atk.t > f.atk.wind + f.atk.strike + f.atk.rec) f.atk = null; }
     if (f.ko > 0) { f.ko -= H_STEP; f.atk = null; return; } // limp
@@ -77,11 +82,11 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
     const step = Math.sin(f.walk) * (Math.abs(mx) > 0.15 ? (f.robot ? 3 : 4) * S : 0);
     if (!air) { spring(f, 5, hip[0] - (f.robot ? 3.5 : 5) * S + step, fl, 0.2); spring(f, 6, hip[0] + (f.robot ? 3.5 : 5) * S - step, fl, 0.2); }
     const ch = f.p[1], front = f.face > 0 ? 4 : 3, back = f.face > 0 ? 3 : 4, k = f.atk;
-    if (k && k.t < k.wind) spring(f, front, ch[0] - f.face * (k.heavy ? 9 : 4) * S, ch[1] - (k.heavy ? 8 : 2) * S, 0.3); // wind-up: pull the arm back
-    else if (k && k.t < k.wind + k.strike) spring(f, front, ch[0] + f.face * (k.heavy ? 20 : 16) * S, ch[1] - (k.heavy ? 6 : 1) * S, 0.55);
+    if (k && k.t < k.wind) spring(f, front, ch[0] - k.ax * (k.heavy ? 9 : 4) * S, ch[1] - k.ay * (k.heavy ? 9 : 4) * S - (k.heavy ? 6 : 1) * S, 0.3); // wind-up: pull the arm back
+    else if (k && k.t < k.wind + k.strike) spring(f, front, ch[0] + k.ax * (k.heavy ? 20 : 16) * S, ch[1] + k.ay * (k.heavy ? 20 : 16) * S - (k.heavy ? 6 : 1) * S * (1 - Math.abs(k.ay)), 0.55);
     else spring(f, front, ch[0] + f.face * 8 * S, ch[1] - 4 * S, 0.25);
     spring(f, back, ch[0] + f.face * 2 * S, ch[1] - 2 * S, 0.22);
-    if (jump && grounded && f.air <= 0) { f.push(0, -4.8); f.air = 0.35; audio.jump(); }
+    if (jump && grounded && f.air <= 0) { f.push(jdx * 1.6, -4.8); f.air = 0.35; audio.jump(); } // diagonal stick: diagonal jump
   };
   const physics = (f) => {
     const fl = floor(), wr = wallR();
@@ -98,8 +103,8 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
       }
     }
   };
-  const fighterStep = (mx, jump, fmx, fjump) => {
-    control(me, over ? 0 : mx, jump && !over); control(foe, over ? 0 : fmx, fjump && !over);
+  const fighterStep = (mx, jump, jdx, fmx, fjump) => {
+    control(me, over ? 0 : mx, jump && !over, jdx); control(foe, over ? 0 : fmx, fjump && !over);
     physics(me); physics(foe);
     const sep = foe.p[2][0] - me.p[2][0]; if (Math.abs(sep) < 11 * S && me.ko <= 0 && foe.ko <= 0) { const k = (11 * S - Math.abs(sep)) / 2 * Math.sign(sep || 1); for (const i of [0, 1, 2, 5, 6]) { me.p[i][0] -= k; foe.p[i][0] += k; } }
     if (!over && intro <= 0) { hitCheck(me, foe); hitCheck(foe, me); }
@@ -138,7 +143,7 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
     }
     arm(front);
     const k = f.atk; // the mop comes out for the heavy swing
-    if (k && k.heavy) { const h = P[front], dx = f.face, mx = h[0] + dx * 13 * S, my = h[1] - 6 * S; g.strokeStyle = '#aab0ba'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(h[0] - dx * 4 * S, h[1] + 3 * S); g.lineTo(mx, my); g.stroke(); g.fillStyle = '#4fb7ff'; g.beginPath(); g.ellipse(mx, my, 3 * S, 2 * S, -dx * 0.5, 0, 7); g.fill(); }
+    if (k && k.heavy) { const h = P[front], dx = k.ax, dy = k.ay - 0.45 * (1 - Math.abs(k.ay)), mx = h[0] + dx * 13 * S, my = h[1] + dy * 13 * S; g.strokeStyle = '#aab0ba'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(h[0] - dx * 4 * S, h[1] - dy * 4 * S); g.lineTo(mx, my); g.stroke(); g.fillStyle = '#4fb7ff'; g.beginPath(); g.ellipse(mx, my, 3 * S, 2 * S, -dx * 0.5, 0, 7); g.fill(); }
   };
   const drawCritic = (g, f) => {
     const P = f.p, fl = f.ko > 0 && Math.floor(t * 20) % 2, coat = fl ? '#ffffff' : '#3a2350';
@@ -173,26 +178,33 @@ export async function fightCritic(mini, { assist = 0 } = {}) {
     await mini.run((dt) => {
       t += dt; flash = Math.max(0, flash - dt * 3); crowdHype = Math.max(0, crowdHype - dt * 0.8); intro -= dt;
       // ---- input ----
-      let mx = input.move.x, jump = input.move.y < -0.55, tap = input.action(), held = input.held;
-      if (ui.auto) { const dx = foe.x - me.x; mx = Math.abs(dx) > 26 * S * 0.75 ? Math.sign(dx) : 0; botT -= dt; tap = false; held = false; if (botT <= 0 && Math.abs(dx) < 30 * S * 0.75) { tap = true; botT = 0.45; } jump = stars.some((s) => Math.abs(s.x - me.x) < 26 && s.vx * (me.x - s.x) > 0); if (ui.fast && t > 4) foe.hp = 0; }
-      if (intro > 0 || over) { mx = 0; jump = false; tap = false; }
-      if (tap) attack(me, false);
+      let mx = input.move.x, my = input.move.y, up = my < -0.55, tap = input.action(), held = input.held;
+      if (ui.auto) { const dx = foe.x - me.x; mx = Math.abs(dx) > 26 * S * 0.75 ? Math.sign(dx) : 0; my = 0; botT -= dt; tap = false; held = false; if (botT <= 0 && Math.abs(dx) < 30 * S * 0.75) { tap = true; botT = 0.45; } up = stars.some((s) => Math.abs(s.x - me.x) < 26 && s.vx * (me.x - s.x) > 0); if (ui.fast && t > 4) foe.hp = 0; }
+      if (intro > 0 || over) { mx = 0; my = 0; up = false; tap = false; }
+      // stick up alone jumps; stick up plus the button hits upwards. So the jump waits a moment for the button,
+      // and pressing it (or already holding it) turns the jump into an aimed blow
+      if (up && !jumpLatch) jumpWait = held || tap ? -1 : ui.auto ? 0 : 0.09;
+      if (!up || tap || held) jumpWait = -1;
+      else if (jumpWait >= 0) { jumpWait -= dt; if (jumpWait < 0) jumpQ = true; }
+      jumpLatch = up;
+      if (tap) attack(me, false, aimOf(me, mx, my));
       if (held && intro <= 0) heldT += dt; me.charge = Math.min(1, Math.max(0, (heldT - 0.2) / 0.5));
-      if (!held && wasHeld && heldT > 0.45 && !over) { me.cd = 0; me.atk = null; attack(me, true); }
+      if (!held && wasHeld && heldT > 0.45 && !over) { me.cd = 0; me.atk = null; attack(me, true, aimOf(me, mx, my)); }
       if (!held) heldT = 0; wasHeld = held;
-      const j = jump && !jumpLatch; jumpLatch = jump;
-      if (me.ko <= 0) me.face = foe.x > me.x ? 1 : -1; if (foe.ko <= 0) foe.face = me.x > foe.x ? 1 : -1;
+      // face the other fighter, except while throwing a blow the other way
+      const turnTo = (f, o) => { if (f.ko > 0) return; const a = f.atk; f.face = a && Math.abs(a.ax) > 0.3 ? Math.sign(a.ax) : o.x > f.x ? 1 : -1; };
+      turnTo(me, foe); turnTo(foe, me);
       // ---- the critic ----
       const dx = me.x - foe.x, ad = Math.abs(dx);
       let fmx = ad > 22 * S ? Math.sign(dx) * 0.85 : ad < 14 * S ? -Math.sign(dx) * 0.4 : 0, fj = false;
       if (foe.ko <= 0 && !over && intro <= 0) {
-        if (ad < 24 * S && foe.cd <= 0 && Math.random() < dt * 1.4) attack(foe, Math.random() < 0.22);
+        if (ad < 24 * S && foe.cd <= 0 && Math.random() < dt * 1.4) attack(foe, Math.random() < 0.22, aimOf(foe, dx, Math.min(0, me.p[1][1] - foe.p[1][1]) * 1.5)); // aims up at a robot in the air
         if (me.atk && me.atk.t < me.atk.wind && ad < 30 * S && Math.random() < dt * 4) foe.block = 0.45;
         if (Math.floor(t / 6) !== Math.floor((t - dt) / 6)) { stars.push({ x: foe.x + foe.face * 10, y: foe.p[1][1], vx: foe.face * 70 }); audio.shoot(); mini.text(foe.x, foe.p[0][1] - 16, '¡UNA ESTRELLA!', '#f2c14e'); }
         fj = Math.random() < dt * 0.25;
       }
       acc += Math.min(dt, 0.1);
-      while (acc >= H_STEP) { fighterStep(mx, j, fmx, fj); acc -= H_STEP; }
+      while (acc >= H_STEP) { fighterStep(mx, jumpQ, Math.abs(mx) > 0.3 ? mx : 0, fmx, fj); jumpQ = false; acc -= H_STEP; }
       for (let i = stars.length - 1; i >= 0; i--) {
         const s = stars[i]; s.x += s.vx * dt;
         if (Math.abs(s.x - me.x) < 6 * S && Math.abs(s.y - me.p[1][1]) < 10 * S && !over) { me.hp = Math.max(0, me.hp - 6); me.push(Math.sign(s.vx) * 2, -2); audio.hurt(); mini.shake = 0.6; mini.text(me.x, me.p[0][1] - 16, '★☆☆☆☆', '#f2c14e'); stars.splice(i, 1); continue; }
