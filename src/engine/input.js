@@ -31,14 +31,15 @@ export class Input {
     this.restStick();
     addEventListener('resize', () => { if (this.stick.id === null) this.restStick(); });
 
-    const grab = (e) => {
-      if (e.pointerType === 'mouse') return;
-      if (this.stick.id !== null) return;
+    // any touch that is not on a control grabs the stick, whatever is drawn under it (#scene, the 2D
+    // minigames' #c2d, a dialog box...): tying it to one canvas left it dead whenever another layer was on top
+    const CONTROLS = 'button, a, input, .card, .win, #note, #reveal, #title, #qte, #rpg';
+    addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' || this.stick.id !== null) return;
+      if (e.target.closest?.(CONTROLS)) return;
       this.stick.id = e.pointerId; this.stick.ox = e.clientX; this.stick.oy = e.clientY; this.stick.x = this.stick.y = 0;
       place(e.clientX, e.clientY); stickEl.classList.remove('rest'); stickEl.classList.add('on');
-    };
-    // the 2D minigames draw on #c2d, which covers #scene: the stick has to listen on both
-    for (const id of ['scene', 'c2d']) document.getElementById(id).addEventListener('pointerdown', grab);
+    });
     addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.stick.id) return;
       let dx = e.clientX - this.stick.ox, dy = e.clientY - this.stick.oy;
