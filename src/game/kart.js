@@ -1,6 +1,7 @@
 // "Gran Premio de la Trama": an arcade kart race against El Productor on a long circuit with grandstands,
-// a crowd, trees, mountains, a pit building, start lights and a balloon. Auto-throttle, steer with the stick,
-// hold the button while turning to drift and let go for a mini-turbo. Three laps; lose and it is re-shot.
+// a crowd, trees, mountains, a pit building, start lights and a balloon. Auto-throttle, steer with the stick
+// (a gentle assist lines the kart up with the road when you let go), hold the button while turning to drift and
+// let go for a mini-turbo. The barriers only guide you along: they never slow you down. Three laps; lose and it is re-shot.
 import * as THREE from 'three';
 import { canvasTex, textTex, noiseTex } from '../engine/gfx.js';
 import { MAT, shadowed, robotStatue } from './robot.js';
@@ -8,7 +9,7 @@ import { MAT, shadowed, robotStatue } from './robot.js';
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export const KART = { x: -300, z: 0 };
 const PTS = [[0, -70], [45, -72], [85, -58], [100, -30], [88, -4], [60, 6], [52, 28], [72, 52], [60, 82], [24, 92], [-6, 74], [-26, 86], [-58, 92], [-90, 70], [-96, 36], [-76, 14], [-92, -12], [-86, -46], [-52, -66]];
-const HALF = 5.4, N = 720, LAPS = 3, GRID = 34;
+const HALF = 7.5, N = 720, LAPS = 3, GRID = 34;
 
 const numberTex = (n) => canvasTex(128, 128, (g) => { g.fillStyle = '#fff'; g.fillRect(0, 0, 128, 128); g.fillStyle = '#111'; g.font = '900 80px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(n, 64, 70); });
 function kartMesh(color, number, driver) {
@@ -174,7 +175,6 @@ export function buildKartTrack(game, A) {
 
   const player = kartMesh(0xc8283a, '7', robotDriver()), boss = kartMesh(0x5a2a8a, '1', producerDriver());
   root.add(player, boss);
-  const bananaGeo = new THREE.TorusGeometry(0.35, 0.12, 6, 12, Math.PI * 1.3), bananaMat = new THREE.MeshStandardMaterial({ color: 0xe8c838, roughness: 0.5 });
   const sparkMat = new THREE.MeshStandardMaterial({ color: 0, emissive: 0x6fe3ff, emissiveIntensity: 5 });
   const sparks = [-0.6, 0.6].map((x) => { const s = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), sparkMat); s.position.set(x, 0.2, -1.2); s.visible = false; player.add(s); return s; });
   const nearest = (x, z, hint) => { let best = hint, bd = Infinity; for (let k = -40; k <= 40; k++) { const i = (hint + k + N) % N, d = (pts[i].x - x) ** 2 + (pts[i].z - z) ** 2; if (d < bd) { bd = d; best = i; } } return [best, Math.sqrt(bd)]; };
@@ -200,14 +200,14 @@ export function buildKartTrack(game, A) {
       let losses = 0, result = null;
       while (result !== 'win') {
         // ---- grid: you on the right, the Producer a few metres ahead on the left: both in view ----
-        const K = { i: GRID, h: yaw(GRID), v: 0, lap: 0, half: false, drift: 0, boost: 0, spin: 0, spinA: 0, hop: 0 };
-        let { x: kx, z: kz } = at(GRID, -1.4);
-        const B = { s: (GRID + 12) / N * len, lap: 0, banT: 5, gas: true, half: false, prevI: GRID + 12 };
-        const bananas = [], focus = V();
+        const K = { i: GRID, h: yaw(GRID), v: 0, lap: 0, half: false, drift: 0, boost: 0, hop: 0, steer: 0 };
+        let { x: kx, z: kz } = at(GRID, -2.2);
+        const B = { s: (GRID + 12) / N * len, lap: 0, gas: true, half: false, prevI: GRID + 12 };
+        const focus = V();
         const camUpdate = () => { const fx = Math.sin(K.h), fz = Math.cos(K.h), tall = gfx.camera.aspect < 1, d = tall ? 10.5 : 8.2; focus.set(KART.x + kx + fx * (tall ? 5 : 2.5), A + 0.9, KART.z + kz + fz * (tall ? 5 : 2.5)); game.focus = focus; cam.offset.set(-fx * d, tall ? 4.6 : 3.3, -fz * d); cam.fov = tall ? 64 : 54; }; // portrait: higher, wider, looking further ahead
         robot.teleport(KART.x + kx, A + 0.2, KART.z + kz);
         player.position.set(kx, 0, kz); player.rotation.set(0, K.h, 0);
-        { const bp = at(GRID + 12, 1.2); boss.position.set(bp.x, 0, bp.z); boss.rotation.y = yaw(GRID + 12); }
+        { const bp = at(GRID + 12, 2.2); boss.position.set(bp.x, 0, bp.z); boss.rotation.y = yaw(GRID + 12); }
         camUpdate(); cam.snap = true;
         ui.objective(`Vuelta 1/${LAPS}`);
         // start lights: red, red, red… green
@@ -225,17 +225,25 @@ export function buildKartTrack(game, A) {
             input.action();
             const [i, off] = nearest(kx, kz, K.i), prev = K.i; K.i = i;
             const onTrack = off < HALF + 0.3;
-            K.spin = Math.max(0, K.spin - dt); K.boost = Math.max(0, K.boost - dt);
-            // a banana spins the kart round once on the spot: the direction of travel and the camera never change
-            K.spinA = K.spin > 0 ? (1 - K.spin / 0.9) * Math.PI * 2 : 0;
-            const top = K.spin > 0 ? 9 : K.boost > 0 ? 38 : onTrack ? 28 : 15;
+            K.boost = Math.max(0, K.boost - dt);
+            // the stick is smoothed a little so small thumb wobbles do not zigzag the kart
+            K.steer += (steer - K.steer) * Math.min(1, dt * 12); steer = K.steer;
+            const top = K.boost > 0 ? 38 : onTrack ? 28 : 26.5; // the gravel only takes the edge off
             K.v += (top - K.v) * Math.min(1, dt * (K.v < top ? 0.9 : 2.5)); if (brake) K.v = Math.max(0, K.v - 30 * dt);
-            if (held && Math.abs(steer) > 0.3 && K.v > 14 && K.spin <= 0) { if (!drifting) { drifting = true; K.drift = 0; K.hop = 0.25; audio.jump(); } K.drift += dt; }
+            if (held && Math.abs(steer) > 0.3 && K.v > 14) { if (!drifting) { drifting = true; K.drift = 0; K.hop = 0.25; audio.jump(); } K.drift += dt; }
             else if (drifting) { drifting = false; if (K.drift > 0.7) { K.boost = K.drift > 1.6 ? 1.5 : 0.9; audio.superDash(); gfx.speed = 0.55; game.pop(V(KART.x + kx, A + 2.5, KART.z + kz), K.drift > 1.6 ? '¡SUPERTURBO!' : '¡TURBO!', '#6fe3ff'); } }
-            const turn = K.spin > 0 ? 0 : -steer * 2.7 * Math.min(1, Math.max(0.35, K.v / 16)) * (drifting ? 1.4 : 1);
-            K.h += turn * dt;
+            K.h += -steer * 2.9 * Math.min(1, Math.max(0.35, K.v / 16)) * (drifting ? 1.4 : 1) * dt;
+            // steering assist: the less you steer, the more the kart lines itself up with the road a little way ahead
+            const ahead = pts[(i + 12) % N]; let dh = Math.atan2(ahead.x - kx, ahead.z - kz) - K.h; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
+            if (!drifting) K.h += dh * (1 - Math.min(1, Math.abs(steer) * 1.4)) * Math.min(1, dt * 2.2);
             kx += Math.sin(K.h) * K.v * dt; kz += Math.cos(K.h) * K.v * dt;
-            if (off > HALF + 2.6) { const c = pts[i], k = (off - HALF - 2.6) / off; kx += (c.x - kx) * k; kz += (c.z - kz) * k; K.v *= 0.9; if (Math.random() < 0.15) { audio.thud(0.4); gfx.shake(0.1); } }
+            // the barriers: put the kart back on the gravel's edge and turn it to slide along, at full speed
+            if (off > HALF + 2.6) {
+              const c = pts[i], k = (off - HALF - 2.6) / off; kx += (c.x - kx) * k; kz += (c.z - kz) * k;
+              const t = tan[i], along = Math.atan2(t.x, t.z); let d = along - K.h; d = Math.atan2(Math.sin(d), Math.cos(d));
+              if (Math.abs(d) < Math.PI / 2) K.h += d * Math.min(1, dt * 8);
+              if (Math.random() < 0.15) { audio.thud(0.25); gfx.shake(0.05); }
+            }
             for (const k of pads) if (Math.abs(i - k) < 3 && off < 2.5 && K.boost < 0.5) { K.boost = 1.2; audio.superDash(); gfx.speed = 0.55; }
             if (prev > N * 0.8 && i < N * 0.2 && K.half) { K.lap++; K.half = false; cheer(); if (K.lap < LAPS) { audio.chime(); if (K.lap === LAPS - 1) ui.bark('narrador', 'Última vuelta. Aquí es donde el Productor saca la cartera.'); } }
             if (i > N * 0.45 && i < N * 0.55) K.half = true;
@@ -248,28 +256,26 @@ export function buildKartTrack(game, A) {
             B.s = (B.s + bv * dt) % len;
             const nbi = Math.floor(B.s / len * N) % N;
             if (B.prevI > N * 0.8 && nbi < N * 0.2 && B.half) { B.lap++; B.half = false; } if (nbi > N * 0.45 && nbi < N * 0.55) B.half = true; B.prevI = nbi;
-            const bp = pts[nbi], bt = tan[nbi], lat = 2.3 * Math.sin(game.time * 0.5);
+            const bp = pts[nbi], bt = tan[nbi], lat = 3.2 * Math.sin(game.time * 0.5);
             const bx = bp.x - bt.z * lat, bz = bp.z + bt.x * lat;
             boss.position.set(bx, 0, bz); boss.rotation.y = Math.atan2(bt.x, bt.z);
-            B.banT -= dt;
-            if (B.banT <= 0) { B.banT = 5 + Math.random() * 2; const m = new THREE.Mesh(bananaGeo, bananaMat); m.position.set(bx - bt.x * 2, 0.15, bz - bt.z * 2); m.rotation.x = Math.PI / 2; m.castShadow = true; root.add(m); bananas.push(m); if (bananas.length === 1) ui.bark('narrador', 'El Productor tira cáscaras de plátano. Es su forma de dar notas.'); }
-            for (let j = bananas.length - 1; j >= 0; j--) { const m = bananas[j]; if (Math.hypot(m.position.x - kx, m.position.z - kz) < 1.3 && K.spin <= 0) { K.spin = 0.9; K.v *= 0.45; drifting = false; audio.hurt(); gfx.shake(0.35); game.pop(V(KART.x + kx, A + 2, KART.z + kz), '¡PLÁTANO!', '#ffe14d'); root.remove(m); bananas.splice(j, 1); } }
             const dbx = kx - bx, dbz = kz - bz, db = Math.hypot(dbx, dbz);
             if (db < 2.2) { kx += dbx / db * (2.2 - db); kz += dbz / db * (2.2 - db); K.v *= 0.92; audio.clank(0.5); gfx.shake(0.15); }
             // ---- visuals ----
             K.hop = Math.max(0, K.hop - dt);
             player.position.set(kx, Math.sin(K.hop / 0.25 * Math.PI) * 0.4, kz);
-            player.rotation.set(0, K.h + K.spinA + (drifting ? -Math.sign(steer) * 0.35 : 0), drifting ? Math.sign(steer) * 0.06 : 0);
+            player.rotation.set(0, K.h + (drifting ? -Math.sign(steer) * 0.35 : 0), drifting ? Math.sign(steer) * 0.06 : 0);
             for (const h of player.steer) h.rotation.y = -steer * 0.4;
             for (const w of player.wheels) w.rotation.x += K.v * dt * 3; for (const w of boss.wheels) w.rotation.x += bv * dt * 3;
             sparks.forEach((s) => { s.visible = drifting && K.drift > 0.7; s.scale.setScalar(0.7 + Math.random() * 0.6); }); sparkMat.emissive.setHex(K.drift > 1.6 ? 0xff8fc7 : 0x6fe3ff);
             if (K.v > 12 && Math.random() < 0.5) gfx.particles.burst(V(KART.x + kx - Math.sin(K.h) * 1.5, A + 0.3, KART.z + kz - Math.cos(K.h) * 1.5), 1, { color: K.boost > 0 ? 0x6fe3ff : onTrack ? 0x8890a0 : 0x9a8a5a, speed: 1, life: 0.5, size: K.boost > 0 ? 0.5 : 0.3, gravity: 1, drag: 3 });
+            game.dbgKart = () => ({ lap: K.lap, i: K.i, v: +K.v.toFixed(1), off: +off.toFixed(1), boss: B.lap * N + nbi, me: K.lap * N + i }); // for tests
             robot.teleport(KART.x + kx, A + 0.2, KART.z + kz); // the hidden robot rides along so checkpoints and focus stay right
             camUpdate();
-            const ahead = pTot >= bTot;
-            if (Math.floor(game.time * 2) !== Math.floor((game.time - dt) * 2)) ui.objective(`Vuelta ${Math.min(LAPS, K.lap + 1)}/${LAPS} · ${ahead ? '1º' : '2º'}`);
-            if (K.lap >= LAPS) { game.tickers.delete(tick); bananas.forEach((m) => root.remove(m)); cheer(); done('win'); }
-            else if (B.lap >= LAPS) { game.tickers.delete(tick); bananas.forEach((m) => root.remove(m)); done('lose'); }
+            const first = pTot >= bTot;
+            if (Math.floor(game.time * 2) !== Math.floor((game.time - dt) * 2)) ui.objective(`Vuelta ${Math.min(LAPS, K.lap + 1)}/${LAPS} · ${first ? '1º' : '2º'}`);
+            if (K.lap >= LAPS) { game.tickers.delete(tick); cheer(); done('win'); }
+            else if (B.lap >= LAPS) { game.tickers.delete(tick); done('lose'); }
           };
           game.tickers.add(tick);
         });
